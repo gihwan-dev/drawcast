@@ -2,7 +2,7 @@
 //
 // These exercise the MCP handshake through the SDK's in-memory transport
 // pair so we get real protocol framing without touching stdio or the
-// network. Heavier tool-behaviour tests land with PR #9.
+// network.
 
 import { describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -10,9 +10,10 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from '../src/server.js';
 import { SceneStore } from '../src/store.js';
 
-async function connectPair() {
-  const drawcast = createServer();
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+async function connectPair(options?: Parameters<typeof createServer>[0]) {
+  const drawcast = createServer(options);
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
   const client = new Client(
     { name: 'drawcast-test', version: '0.0.0' },
     { capabilities: {} },
@@ -37,18 +38,30 @@ describe('createServer', () => {
     expect(drawcast.store).toBe(store);
   });
 
-  it('responds to tools/list with an empty list', async () => {
+  it('responds to tools/list with the default core tool set', async () => {
     const { client } = await connectPair();
     const result = await client.listTools();
-    expect(result.tools).toEqual([]);
+    expect(result.tools.map((t) => t.name).sort()).toEqual([
+      'draw_upsert_box',
+      'draw_upsert_edge',
+      'draw_upsert_sticky',
+    ]);
+    for (const tool of result.tools) {
+      expect(tool.inputSchema.type).toBe('object');
+      expect(typeof tool.description).toBe('string');
+    }
     await client.close();
   });
 
-  it('returns a clear error when tools/call is invoked before any tool is registered', async () => {
-    const { client } = await connectPair();
-    await expect(
-      client.callTool({ name: 'draw_upsert_box', arguments: {} }),
-    ).rejects.toThrow(/draw_upsert_box/);
+  it('returns an isError response when tools/call hits an unknown tool', async () => {
+    const { client } = await connectPair({ tools: [] });
+    const result = await client.callTool({
+      name: 'draw_upsert_box',
+      arguments: {},
+    });
+    expect(result.isError).toBe(true);
+    const content = result.content as { type: string; text: string }[];
+    expect(content[0]?.text).toMatch(/draw_upsert_box/);
     await client.close();
   });
 });
