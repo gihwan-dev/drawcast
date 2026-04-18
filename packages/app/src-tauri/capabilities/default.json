@@ -10,6 +10,8 @@
     {
       "identifier": "shell:allow-spawn",
       "allow": [{ "name": "binaries/drawcast-mcp", "sidecar": true }]
-    }
+    },
+    "dialog:default",
+    "dialog:allow-open"
   ]
 }

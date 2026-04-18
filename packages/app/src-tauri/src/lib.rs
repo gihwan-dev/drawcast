@@ -11,6 +11,7 @@ mod cli_host;
 mod cli_register;
 mod session;
 mod sidecar;
+mod uploads;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -31,6 +32,7 @@ pub type ManagedSession = std::sync::Mutex<Option<SessionMeta>>;
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_sidecar_port,
             get_default_session_path,
@@ -43,6 +45,8 @@ pub fn run() {
             list_sessions,
             switch_session,
             get_current_session,
+            save_upload,
+            read_file_bytes,
         ])
         .setup(|app| {
             // Bootstrap the default session directory + metadata, then spawn
@@ -110,6 +114,41 @@ pub fn run() {
 fn get_default_session_path() -> Result<String, String> {
     let path = session::default_session_path().map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
+}
+
+/// Persist an uploaded file inside the session's `uploads/` directory. Called
+/// by all three upload channels (drag-drop, clipboard paste, file picker).
+/// Returns the absolute path the bytes landed at, so the frontend can surface
+/// the actual name after sanitization/collision-suffixing.
+#[tauri::command]
+async fn save_upload(
+    session_path: String,
+    filename: String,
+    data: Vec<u8>,
+) -> Result<String, String> {
+    let path = PathBuf::from(&session_path);
+    if !path.is_dir() {
+        return Err(format!(
+            "session path does not exist: {}",
+            path.display()
+        ));
+    }
+    let saved = uploads::save_upload(&path, &filename, &data)
+        .map_err(|e| e.to_string())?;
+    Ok(saved.to_string_lossy().to_string())
+}
+
+/// Small wrapper for the paperclip file-picker flow: Tauri's dialog plugin
+/// returns paths, we read those bytes here so we can then funnel through
+/// `save_upload`. A dedicated command is lighter than pulling in the full
+/// `tauri-plugin-fs` surface just for one-off reads.
+#[tauri::command]
+async fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    let path = PathBuf::from(&path);
+    if !path.is_file() {
+        return Err(format!("not a file: {}", path.display()));
+    }
+    std::fs::read(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

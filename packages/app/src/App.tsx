@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Splitter } from './components/Splitter.js';
 import { StatusBar } from './components/StatusBar.js';
+import { ToastStack } from './components/Toast.js';
 import { TopBar } from './components/TopBar.js';
 import {
   getSidecarPort,
@@ -119,6 +120,7 @@ export function App(): JSX.Element {
         right={<CanvasPanel />}
       />
       <StatusBar />
+      <ToastStack />
     </div>
   );
 }

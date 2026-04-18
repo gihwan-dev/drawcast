@@ -2,11 +2,26 @@
 // Codex child process via the Rust CLI host. Renders an empty state with a
 // "Connect CLI" affordance when no child is running.
 //
+// Responsibilities beyond the raw terminal (PR #16):
+// - Drag-drop files onto the panel → `save_upload` for each → toast.
+// - Clipboard paste (image blobs) → `save_upload` as `paste-{ts}.{ext}`.
+// - Sketchy dashed overlay while the user is dragging over us.
+// - Expose `writeToActiveTerminal(text)` so other modules (the selection
+//   bridge's context menu, the single-file drop flow) can shove text into
+//   the live xterm as if it had been typed.
+//
 // Limitation (PR #14): the Rust side uses plain OS pipes, not a real PTY.
 // Many CLIs detect this and downgrade to non-interactive behaviour (no
 // colors, no raw-mode input). Real PTY support via `portable-pty` is a
 // post-MVP follow-up.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type ReactNode,
+} from 'react';
 import type {
   ITerminalOptions,
   Terminal as XTerminal,
@@ -24,9 +39,11 @@ import {
   type CliChoice,
   type RegistrationStatus,
 } from '../services/cli.js';
+import { saveUpload, saveUploads } from '../services/uploads.js';
 import { useCliStore } from '../store/cliStore.js';
 import { useSessionStore } from '../store/sessionStore.js';
 import { useSettingsStore } from '../store/settingsStore.js';
+import { useToastStore } from '../store/toastStore.js';
 
 const XTERM_OPTIONS: ITerminalOptions = {
   fontFamily: 'JetBrains Mono, Cascadia Code, monospace',
@@ -40,6 +57,34 @@ const XTERM_OPTIONS: ITerminalOptions = {
     cursor: '#EDE6D7',
   },
 };
+
+// ---------------------------------------------------------------------------
+// Module-scope terminal registry — lets other modules (PR #17 context menu,
+// PR #16 single-file drop) write into the active xterm as if typed. `.paste`
+// dispatches through xterm's onData → sendStdin path, which is exactly what
+// a real keyboard event would do.
+
+let activeTerminal: XTerminal | null = null;
+
+/** Inject `text` into the live terminal as if the user had typed it. */
+export function writeToActiveTerminal(text: string): void {
+  if (activeTerminal !== null) {
+    activeTerminal.paste(text);
+  }
+}
+
+/** Test hook: clears the module-scope terminal registry. */
+export function __resetActiveTerminalForTests(): void {
+  activeTerminal = null;
+}
+
+function extFromMime(mime: string): string {
+  const sub = mime.split('/')[1] ?? 'bin';
+  return sub.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'bin';
+}
+
+// ---------------------------------------------------------------------------
+// Component
 
 type ConnectState =
   | { kind: 'idle' }
@@ -69,15 +114,204 @@ export function TerminalPanel(): JSX.Element {
     };
   }, [sessionPath, setSessionPath]);
 
-  if (cliRunning) {
-    return <TerminalView />;
-  }
-  return (
+  const inner = cliRunning ? (
+    <TerminalView />
+  ) : (
     <TerminalEmptyState
       cliChoice={cliChoice}
       sessionPath={sessionPath}
       onAttached={(which) => setCliRunning(true, which)}
     />
+  );
+
+  return <TerminalUploadLayer cliRunning={cliRunning}>{inner}</TerminalUploadLayer>;
+}
+
+interface UploadLayerProps {
+  cliRunning: boolean;
+  children: ReactNode;
+}
+
+/** Wraps the terminal/empty-state with drag-drop + paste upload affordances
+ *  and the sketchy dashed overlay during `dragover`. */
+function TerminalUploadLayer({ cliRunning, children }: UploadLayerProps): JSX.Element {
+  const show = useToastStore((s) => s.show);
+  const [dragOver, setDragOver] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  const handleDragOver = useCallback((e: ReactDragEvent<HTMLDivElement>): void => {
+    // Required for `drop` to fire. We also need to signal copy intent so
+    // the cursor shows the "drop here" affordance.
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  }, []);
+
+  const handleDragEnter = useCallback((e: ReactDragEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    // Only enter drop state for actual file drags. Text/URL drags from
+    // within the page shouldn't trigger the overlay.
+    const types = e.dataTransfer?.types;
+    if (types !== undefined) {
+      for (let i = 0; i < types.length; i++) {
+        if (types[i] === 'Files') {
+          setDragOver(true);
+          return;
+        }
+      }
+    }
+  }, []);
+
+  const handleDragLeave = useCallback(
+    (e: ReactDragEvent<HTMLDivElement>): void => {
+      // A `dragleave` fires even when moving between the panel's own
+      // children. Guard by checking the related target — if it's still
+      // inside our root, swallow.
+      const root = rootRef.current;
+      const related = e.relatedTarget as Node | null;
+      if (root !== null && related !== null && root.contains(related)) return;
+      setDragOver(false);
+    },
+    [],
+  );
+
+  const handleDrop = useCallback(
+    async (e: ReactDragEvent<HTMLDivElement>): Promise<void> => {
+      e.preventDefault();
+      setDragOver(false);
+      const files = e.dataTransfer?.files ?? null;
+      if (files === null || files.length === 0) return;
+
+      const list: File[] = [];
+      for (let i = 0; i < files.length; i++) {
+        // `FileList.item` exists in browsers but not in some test harnesses
+        // that pass a plain array through `fireEvent`. Fall back to index
+        // access so the path works under jsdom.
+        const withItem = files as FileList & {
+          item?: (i: number) => File | null;
+        };
+        const f =
+          typeof withItem.item === 'function'
+            ? withItem.item(i)
+            : (files[i] ?? null);
+        if (f !== null) list.push(f);
+      }
+      try {
+        const saved = await saveUploads(list);
+        if (saved.length === 0) return;
+        show(`Saved ${saved.length} file${saved.length === 1 ? '' : 's'}`, 'success');
+        if (saved.length === 1 && cliRunning) {
+          const first = saved[0];
+          if (first !== undefined) {
+            writeToActiveTerminal(`@uploads/${first.fileName} `);
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        show(`Upload failed: ${msg}`, 'error');
+      }
+    },
+    [cliRunning, show],
+  );
+
+  const handlePaste = useCallback(
+    async (e: React.ClipboardEvent<HTMLDivElement>): Promise<void> => {
+      const items = e.clipboardData?.items;
+      if (items === undefined || items.length === 0) return;
+      const images: { file: File; name: string }[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it === undefined) continue;
+        if (!it.type.startsWith('image/')) continue;
+        const file = it.getAsFile();
+        if (file === null) continue;
+        const ext = extFromMime(it.type);
+        const name = `paste-${Date.now()}-${i}.${ext}`;
+        images.push({ file, name });
+      }
+      if (images.length === 0) return;
+      // Only prevent default once we know we'll consume the paste; a plain
+      // text paste should still reach the terminal.
+      e.preventDefault();
+      try {
+        for (const { file, name } of images) {
+          const buf = await file.arrayBuffer();
+          await saveUpload(name, buf);
+        }
+        show(
+          `Saved ${images.length} file${images.length === 1 ? '' : 's'}`,
+          'success',
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        show(`Paste failed: ${msg}`, 'error');
+      }
+    },
+    [show],
+  );
+
+  return (
+    <div
+      ref={rootRef}
+      data-testid="dc-terminal-upload-layer"
+      data-dragging={dragOver ? 'true' : 'false'}
+      className="relative h-full w-full"
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={(e) => {
+        void handleDrop(e);
+      }}
+      onPaste={(e) => {
+        void handlePaste(e);
+      }}
+    >
+      {children}
+      {dragOver && <DropZoneOverlay />}
+    </div>
+  );
+}
+
+/** Sketchy dashed-border overlay matching UI design doc §4.10. The SVG
+ *  inset dashed rect mimics Excalidraw's `strokeStyle: 'dashed'` look. */
+function DropZoneOverlay(): JSX.Element {
+  return (
+    <div
+      data-testid="dc-drop-overlay"
+      aria-label="Drop files to attach"
+      className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-dc-bg-app/[.92]"
+    >
+      <svg
+        aria-hidden="true"
+        className="absolute inset-0 h-full w-full"
+        preserveAspectRatio="none"
+      >
+        <rect
+          x="8"
+          y="8"
+          width="calc(100% - 16px)"
+          height="calc(100% - 16px)"
+          fill="none"
+          stroke="var(--dc-border-strong, #C9C0AE)"
+          strokeWidth="2"
+          strokeDasharray="10 6 4 6 8 4"
+          strokeLinecap="round"
+          rx="6"
+        />
+      </svg>
+      <div className="flex flex-col items-center text-center">
+        <p
+          className="text-[28px] leading-none text-dc-text-primary"
+          style={{ fontFamily: 'Excalifont, Virgil, "JetBrains Mono", monospace' }}
+        >
+          Drop to attach
+        </p>
+        <p className="mt-dc-sm text-[14px] text-dc-text-secondary">
+          PNG, SVG, .excalidraw, text files
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -239,6 +473,7 @@ function TerminalView(): JSX.Element {
       fit.fit();
       termRef.current = term;
       fitRef.current = fit;
+      activeTerminal = term;
 
       // Forward keystrokes to the CLI. The host's write_stdin emits raw
       // bytes which the CLI sees as pipe input.
@@ -301,6 +536,7 @@ function TerminalView(): JSX.Element {
         const cleanup = (term as unknown as { _drawcastCleanup?: () => void })
           ._drawcastCleanup;
         cleanup?.();
+        if (activeTerminal === term) activeTerminal = null;
         term.dispose();
         termRef.current = null;
       }
