@@ -1,4 +1,5 @@
 import { CliSelect } from './CliSelect.js';
+import { SessionSelect } from './SessionSelect.js';
 import { useSettingsStore } from '../store/settingsStore.js';
 
 /**
@@ -24,6 +25,7 @@ export function TopBar(): JSX.Element {
         Drawcast
       </span>
       <div className="flex items-center gap-dc-md">
+        <SessionSelect />
         <CliSelect />
         <button
           type="button"

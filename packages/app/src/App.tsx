@@ -10,6 +10,8 @@ import { useMcpConnected } from './mcp/context.js';
 import { CanvasPanel } from './panels/CanvasPanel.js';
 import { TerminalPanel } from './panels/TerminalPanel.js';
 import { getDefaultSessionPath } from './services/cli.js';
+import { subscribeSessionSwitched } from './services/session.js';
+import { useSceneStore } from './store/sceneStore.js';
 import { useSessionStore } from './store/sessionStore.js';
 import { useSettingsStore } from './store/settingsStore.js';
 import { useSidecarStore } from './store/sidecarStore.js';
@@ -33,6 +35,10 @@ export function App(): JSX.Element {
   const setStarting = useSidecarStore((s) => s.setStarting);
   const sessionPath = useSessionStore((s) => s.path);
   const setSessionPath = useSessionStore((s) => s.setPath);
+  const loadSessions = useSessionStore((s) => s.load);
+  const setCurrentSession = useSessionStore((s) => s.setCurrent);
+  const refreshSessionList = useSessionStore((s) => s.refreshList);
+  const resetScene = useSceneStore((s) => s.reset);
 
   useEffect(() => {
     document.documentElement.dataset['theme'] = themeMode;
@@ -87,6 +93,21 @@ export function App(): JSX.Element {
       cancelled = true;
     };
   }, [sessionPath, setSessionPath]);
+
+  // Bootstrap session state (current + list) and subscribe to the
+  // `session-switched` event so the dropdown + sceneStore stay in sync when
+  // Rust orchestrates a switch.
+  useEffect(() => {
+    void loadSessions();
+    const dispose = subscribeSessionSwitched((meta) => {
+      setCurrentSession(meta);
+      resetScene();
+      void refreshSessionList();
+    });
+    return () => {
+      dispose();
+    };
+  }, [loadSessions, refreshSessionList, resetScene, setCurrentSession]);
 
   return (
     <div className="flex h-screen flex-col bg-dc-bg-app text-dc-text-primary">

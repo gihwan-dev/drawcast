@@ -3,6 +3,7 @@
 //! Wires:
 //! - The MCP sidecar supervisor (PR #12).
 //! - The CLI host + auto-registration for Claude Code / Codex (PR #14).
+//! - Session management: create / list / switch (PR #15).
 //!
 //! Exposes Tauri commands that the frontend uses to spawn and interact with
 //! those subprocesses.
@@ -14,13 +15,18 @@ mod sidecar;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 
 use crate::cli_host::{CliHost, CliKind, ManagedCliHost};
 use crate::cli_register::{
     register_claude, register_codex, RegistrationStatus,
 };
+use crate::session::SessionMeta;
 use crate::sidecar::{get_sidecar_port, ManagedSidecar, McpSidecar};
+
+/// Currently-active session. Shared across command handlers so the frontend
+/// can read `get_current_session` without re-scanning disk.
+pub type ManagedSession = std::sync::Mutex<Option<SessionMeta>>;
 
 pub fn run() {
     let app = tauri::Builder::default()
@@ -33,12 +39,35 @@ pub fn run() {
             cli_resize,
             cli_shutdown,
             register_cli,
+            create_session,
+            list_sessions,
+            switch_session,
+            get_current_session,
         ])
         .setup(|app| {
+            // Bootstrap the default session directory + metadata, then spawn
+            // the sidecar pointing at it. If the user previously created
+            // named sessions those continue to live alongside `default`.
             let session_path = session::default_session_path()?;
+            let meta = session::load_meta(&session_path)
+                .unwrap_or_else(|_| {
+                    // default_session_path() guarantees meta exists, but if
+                    // the file was corrupted we fall back to a synthetic stub
+                    // rather than crashing at boot.
+                    SessionMeta {
+                        id: "default".to_string(),
+                        name: "Default".to_string(),
+                        created_at: 0,
+                        updated_at: 0,
+                        cli_choice: None,
+                        theme: "sketchy".to_string(),
+                        last_known_port: None,
+                    }
+                });
             let sidecar = McpSidecar::spawn(&app.handle(), session_path)?;
             app.manage::<ManagedSidecar>(Mutex::new(Some(sidecar)));
             app.manage::<ManagedCliHost>(tokio::sync::Mutex::new(None));
+            app.manage::<ManagedSession>(Mutex::new(Some(meta)));
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -162,6 +191,98 @@ async fn register_cli(app: tauri::AppHandle, which: String) -> Result<String, St
         other => return Err(format!("unknown CLI kind: {other}")),
     };
     Ok(status.as_str().to_string())
+}
+
+#[tauri::command]
+fn create_session(name: String) -> Result<SessionMeta, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("session name must not be empty".to_string());
+    }
+    session::create_session(trimmed).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_sessions() -> Result<Vec<SessionMeta>, String> {
+    session::list_sessions().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_current_session(state: tauri::State<'_, ManagedSession>) -> Result<Option<SessionMeta>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    Ok(guard.clone())
+}
+
+/// Orchestrated session switch:
+///   1. Stop any running CLI host.
+///   2. Shut down the current sidecar.
+///   3. Respawn the sidecar pointing at the new session dir.
+///   4. Update the managed `current session` slot.
+///   5. Emit `session-switched { meta }` so the frontend can reset state.
+///
+/// The sidecar negotiates a fresh port on respawn; the existing `sidecar-port`
+/// + `sidecar-ready` event flow on the frontend picks up the new port and
+/// reconnects the MCP SSE client automatically.
+#[tauri::command]
+async fn switch_session(app: tauri::AppHandle, id: String) -> Result<SessionMeta, String> {
+    let new_path = session::session_path_for(&id).map_err(|e| e.to_string())?;
+    if !new_path.is_dir() {
+        return Err(format!(
+            "session does not exist: {}",
+            new_path.display()
+        ));
+    }
+    let meta = session::load_meta(&new_path).map_err(|e| e.to_string())?;
+
+    // 1. Shut down any running CLI host so it doesn't keep a stale cwd.
+    {
+        let cli_state: tauri::State<'_, ManagedCliHost> = app.state();
+        let mut guard = cli_state.lock().await;
+        if let Some(host) = guard.take() {
+            let _ = host.shutdown().await;
+        }
+    }
+
+    // 2. Stop the current sidecar.
+    let old_sidecar = {
+        let state: tauri::State<'_, ManagedSidecar> = app.state();
+        let mut guard = state.lock().map_err(|e| e.to_string())?;
+        guard.take()
+    };
+    if let Some(sidecar) = old_sidecar {
+        if let Err(err) = sidecar.shutdown().await {
+            // Non-fatal — the supervisor is torn down, we still respawn. Log
+            // via the sidecar-log channel so the frontend's dev console sees it.
+            let _ = app.emit(
+                "sidecar-log",
+                serde_json::json!({
+                    "level": "error",
+                    "line": format!("switch_session: old sidecar shutdown failed: {err}")
+                }),
+            );
+        }
+    }
+
+    // 3. Respawn the sidecar at the new path.
+    let new_sidecar =
+        McpSidecar::spawn(&app, new_path.clone()).map_err(|e| e.to_string())?;
+    {
+        let state: tauri::State<'_, ManagedSidecar> = app.state();
+        let mut guard = state.lock().map_err(|e| e.to_string())?;
+        *guard = Some(new_sidecar);
+    }
+
+    // 4. Update the managed current-session slot.
+    {
+        let state: tauri::State<'_, ManagedSession> = app.state();
+        let mut guard = state.lock().map_err(|e| e.to_string())?;
+        *guard = Some(meta.clone());
+    }
+
+    // 5. Let the frontend know so it can clear sceneStore, etc.
+    let _ = app.emit("session-switched", &meta);
+
+    Ok(meta)
 }
 
 /// Resolve the drawcast-mcp sidecar path. Tauri bundles the sidecar next to
