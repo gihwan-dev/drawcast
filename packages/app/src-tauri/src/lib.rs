@@ -46,6 +46,7 @@ pub fn run() {
             switch_session,
             get_current_session,
             save_upload,
+            save_preview_bytes,
             read_file_bytes,
         ])
         .setup(|app| {
@@ -134,6 +135,28 @@ async fn save_upload(
         ));
     }
     let saved = uploads::save_upload(&path, &filename, &data)
+        .map_err(|e| e.to_string())?;
+    Ok(saved.to_string_lossy().to_string())
+}
+
+/// Persist a snapshot PNG inside the session's `previews/` directory.
+/// Called by the TopBar 📸 button — separate from `save_upload` so the
+/// two channels land under distinct subdirs and can't accidentally
+/// collide with one another's filenames.
+#[tauri::command]
+async fn save_preview_bytes(
+    session_path: String,
+    filename: String,
+    data: Vec<u8>,
+) -> Result<String, String> {
+    let path = PathBuf::from(&session_path);
+    if !path.is_dir() {
+        return Err(format!(
+            "session path does not exist: {}",
+            path.display()
+        ));
+    }
+    let saved = uploads::save_preview_bytes(&path, &filename, &data)
         .map_err(|e| e.to_string())?;
     Ok(saved.to_string_lossy().to_string())
 }

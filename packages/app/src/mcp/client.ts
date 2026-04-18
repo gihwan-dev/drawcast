@@ -25,7 +25,13 @@ export interface SceneSnapshot {
   locked: string[];
 }
 
-export type PreviewRequest = { requestId: string };
+export type PreviewRequest = {
+  requestId: string;
+  /** Optional format hint from the server; defaults to PNG. */
+  format?: 'png' | 'jpeg';
+  /** Optional export-scale hint; defaults to 2 (Retina). */
+  scale?: number;
+};
 export type ClipboardRequest = {
   requestId: string;
   format: 'png' | 'excalidraw';
@@ -180,10 +186,20 @@ export function createMcpClient(port: number, host?: string): McpClient {
       'requestPreview',
       (evt: MessageEvent<string>) => {
         try {
-          const parsed = JSON.parse(evt.data) as { requestId?: unknown };
-          if (typeof parsed.requestId === 'string') {
-            emit(previewListeners, { requestId: parsed.requestId });
+          const parsed = JSON.parse(evt.data) as {
+            requestId?: unknown;
+            format?: unknown;
+            scale?: unknown;
+          };
+          if (typeof parsed.requestId !== 'string') return;
+          const next: PreviewRequest = { requestId: parsed.requestId };
+          if (parsed.format === 'png' || parsed.format === 'jpeg') {
+            next.format = parsed.format;
           }
+          if (typeof parsed.scale === 'number') {
+            next.scale = parsed.scale;
+          }
+          emit(previewListeners, next);
         } catch {
           /* ignore */
         }

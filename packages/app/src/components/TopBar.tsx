@@ -1,5 +1,6 @@
 import { CliSelect } from './CliSelect.js';
 import { SessionSelect } from './SessionSelect.js';
+import { SnapshotButton } from './SnapshotButton.js';
 import { UploadButton } from './UploadButton.js';
 import { useSettingsStore } from '../store/settingsStore.js';
 
@@ -28,6 +29,7 @@ export function TopBar(): JSX.Element {
       <div className="flex items-center gap-dc-md">
         <SessionSelect />
         <CliSelect />
+        <SnapshotButton />
         <UploadButton />
         <button
           type="button"

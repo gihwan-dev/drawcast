@@ -9,12 +9,17 @@
 //!
 //! The on-disk contract mirrors `docs/07-session-and-ipc.md`:
 //! `~/.drawcast/sessions/{id}/uploads/<sanitized-name>`.
+//!
+//! PR #18 reuses the same sanitize + collision primitives for the snapshot
+//! button via `save_preview_bytes`, which writes to a sibling `previews/`
+//! subdirectory.
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 
 const UPLOADS_DIR: &str = "uploads";
+const PREVIEWS_DIR: &str = "previews";
 /// Cap on the sanitized filename. Long enough for realistic screenshot paths
 /// like `Screen Shot 2026-04-18 at 22.31.47.png` (~46 chars) plus a stem +
 /// extension buffer, but short enough to avoid blowing past filesystem path
@@ -29,6 +34,29 @@ const MAX_FILENAME_LEN: usize = 120;
 /// those never come from a user-intended upload, so refusing them early
 /// avoids silent rewrites.
 pub fn save_upload(session_path: &Path, filename: &str, data: &[u8]) -> Result<PathBuf> {
+    save_under(session_path, UPLOADS_DIR, filename, data)
+}
+
+/// Save `data` under `session_path/previews/<sanitized(filename)>`.
+/// Mirrors [`save_upload`] for the explicit-snapshot button — the
+/// sanitization, sub-directory creation, and collision-suffixing rules
+/// are all identical, only the target directory differs. Returns the
+/// absolute path the bytes were written to.
+pub fn save_preview_bytes(
+    session_path: &Path,
+    filename: &str,
+    data: &[u8],
+) -> Result<PathBuf> {
+    save_under(session_path, PREVIEWS_DIR, filename, data)
+}
+
+/// Shared implementation for the uploads/previews write paths.
+fn save_under(
+    session_path: &Path,
+    subdir: &str,
+    filename: &str,
+    data: &[u8],
+) -> Result<PathBuf> {
     if filename.is_empty() {
         return Err(anyhow!("filename must not be empty"));
     }
@@ -43,11 +71,11 @@ pub fn save_upload(session_path: &Path, filename: &str, data: &[u8]) -> Result<P
         ));
     }
 
-    let uploads = session_path.join(UPLOADS_DIR);
-    std::fs::create_dir_all(&uploads)
-        .with_context(|| format!("mkdir {}", uploads.display()))?;
+    let dir = session_path.join(subdir);
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("mkdir {}", dir.display()))?;
 
-    let target = unique_path(&uploads, &sanitized);
+    let target = unique_path(&dir, &sanitized);
     std::fs::write(&target, data)
         .with_context(|| format!("write {}", target.display()))?;
     Ok(target)
@@ -209,5 +237,31 @@ mod tests {
         let dir = tempdir().unwrap();
         assert!(save_upload(dir.path(), "", b"x").is_err());
         assert!(save_upload(dir.path(), "bad\0name.png", b"x").is_err());
+    }
+
+    #[test]
+    fn save_preview_bytes_writes_to_previews_dir() {
+        let dir = tempdir().unwrap();
+        let out = save_preview_bytes(dir.path(), "snap-1.png", b"\x89PNG")
+            .expect("save_preview_bytes");
+        assert!(out.is_absolute(), "returned path should be absolute");
+        assert!(
+            out.ends_with("previews/snap-1.png"),
+            "got {}",
+            out.display()
+        );
+        assert_eq!(std::fs::read(&out).unwrap(), b"\x89PNG");
+        assert!(dir.path().join("previews").is_dir());
+        // uploads/ is untouched — the two channels live in separate dirs.
+        assert!(!dir.path().join("uploads").is_dir());
+    }
+
+    #[test]
+    fn save_preview_bytes_suffixes_on_collision() {
+        let dir = tempdir().unwrap();
+        let a = save_preview_bytes(dir.path(), "snap.png", b"one").unwrap();
+        let b = save_preview_bytes(dir.path(), "snap.png", b"two").unwrap();
+        assert_eq!(a.file_name().unwrap().to_string_lossy(), "snap.png");
+        assert_eq!(b.file_name().unwrap().to_string_lossy(), "snap-1.png");
     }
 }

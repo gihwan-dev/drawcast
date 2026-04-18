@@ -31,11 +31,14 @@ import { Excalidraw } from '@excalidraw/excalidraw';
 import type { Primitive, Scene } from '@drawcast/core';
 import { compile } from '@drawcast/core';
 import type { CompileResult } from '@drawcast/core';
+import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types';
 import { writeToActiveTerminal } from './TerminalPanel.js';
 import { useSceneStore } from '../store/sceneStore.js';
 import { useSettingsStore } from '../store/settingsStore.js';
+import { useCanvasStore } from '../store/canvasStore.js';
 import { resolveBuiltinTheme } from '../theme/builtinThemes.js';
 import { useMcp, useMcpConnected } from '../mcp/context.js';
+import { handlePreviewRequest } from '../mcp/preview.js';
 
 // Minimal structural typings for the Excalidraw surface area we touch.
 // The package's own .d.ts types pull the entire private app into scope;
@@ -227,6 +230,30 @@ export function CanvasPanel(): JSX.Element {
     };
   }, []);
 
+  // Wipe the canvasStore slot when the panel tears down so other
+  // consumers don't reach a dangling API object.
+  useEffect(() => {
+    return () => {
+      useCanvasStore.getState().setApi(null);
+    };
+  }, []);
+
+  // Preview pipeline: the MCP server emits `requestPreview` when
+  // `draw_get_preview` is invoked. We render the current scene to PNG
+  // and POST it back via client.postPreview. The full imperative API is
+  // pulled from canvasStore rather than apiRef so the handler also sees
+  // the getSceneElements / getFiles / getAppState accessors.
+  useEffect(() => {
+    if (client === null) return;
+    const offPreview = client.onRequestPreview((req) => {
+      const api = useCanvasStore.getState().api;
+      void handlePreviewRequest(client, api, req);
+    });
+    return () => {
+      offPreview();
+    };
+  }, [client]);
+
   // Close the context menu on Escape or on any click outside its DOM.
   useEffect(() => {
     if (contextMenu === null) return;
@@ -368,6 +395,11 @@ export function CanvasPanel(): JSX.Element {
       <Excalidraw
         excalidrawAPI={(api) => {
           apiRef.current = api as unknown as ExcalidrawImperativeAPILike;
+          // Expose the full imperative API so the snapshot button + MCP
+          // preview handler can call exportToBlob without prop drilling.
+          useCanvasStore
+            .getState()
+            .setApi(api as unknown as ExcalidrawImperativeAPI);
           setApiReady(true);
         }}
         onChange={onChange as never}
