@@ -41,3 +41,21 @@ export {
   normalizePoints,
   type NormalizedPoints,
 } from './emit/shared/points.js';
+
+// Serialization (Phase 1.5).
+export {
+  serializeAsExcalidrawFile,
+  serializeAsClipboardJSON,
+  serializeAsObsidianMarkdown,
+  type ExcalidrawFileEnvelope,
+  type ExcalidrawClipboardEnvelope,
+  type SerializeOptions,
+} from './serialize.js';
+
+// Compliance runner (Phase 1.6).
+export {
+  runCompliance,
+  type ComplianceIssue,
+  type ComplianceReport,
+  type ComplianceCode,
+} from './testing/compliance.js';
