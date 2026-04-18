@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { PanelShell } from './components/PanelShell.js';
 import { Splitter } from './components/Splitter.js';
 import { StatusBar } from './components/StatusBar.js';
 import { TopBar } from './components/TopBar.js';
@@ -9,15 +8,19 @@ import {
 } from './mcp/sidecarBridge.js';
 import { useMcpConnected } from './mcp/context.js';
 import { CanvasPanel } from './panels/CanvasPanel.js';
+import { TerminalPanel } from './panels/TerminalPanel.js';
+import { getDefaultSessionPath } from './services/cli.js';
+import { useSessionStore } from './store/sessionStore.js';
 import { useSettingsStore } from './store/settingsStore.js';
 import { useSidecarStore } from './store/sidecarStore.js';
 
 /**
  * Root app layout: TopBar + left/right split + StatusBar.
  *
- * - PR #13 replaces `<CanvasPlaceholder />` with the real `<Excalidraw />`
+ * - PR #13 replaces the canvas placeholder with the real `<Excalidraw />`
  *   wrapper.
- * - PR #14 replaces `<TerminalPlaceholder />` with the xterm.js host.
+ * - PR #14 replaces the terminal placeholder with the xterm.js host and
+ *   wires Claude Code / Codex auto-registration.
  */
 export function App(): JSX.Element {
   const panelRatio = useSettingsStore((s) => s.panelRatio);
@@ -28,6 +31,8 @@ export function App(): JSX.Element {
   const setReady = useSidecarStore((s) => s.setReady);
   const setCrashed = useSidecarStore((s) => s.setCrashed);
   const setStarting = useSidecarStore((s) => s.setStarting);
+  const sessionPath = useSessionStore((s) => s.path);
+  const setSessionPath = useSessionStore((s) => s.setPath);
 
   useEffect(() => {
     document.documentElement.dataset['theme'] = themeMode;
@@ -67,28 +72,32 @@ export function App(): JSX.Element {
     };
   }, [setReady, setCrashed, setStarting]);
 
+  // Populate the session store from the Rust backend on first mount so
+  // TerminalPanel has a cwd to spawn the CLI in.
+  useEffect(() => {
+    if (sessionPath !== null) return;
+    let cancelled = false;
+    void (async () => {
+      const path = await getDefaultSessionPath();
+      if (!cancelled && path !== null) {
+        setSessionPath(path);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionPath, setSessionPath]);
+
   return (
     <div className="flex h-screen flex-col bg-dc-bg-app text-dc-text-primary">
       <TopBar />
       <Splitter
         ratio={panelRatio}
         onRatioChange={setPanelRatio}
-        left={<TerminalPlaceholder />}
+        left={<TerminalPanel />}
         right={<CanvasPanel />}
       />
       <StatusBar />
     </div>
-  );
-}
-
-function TerminalPlaceholder(): JSX.Element {
-  return (
-    <PanelShell title="Terminal" subtitle="xterm.js host (PR #14)">
-      <p className="text-[13px] leading-5 text-dc-text-secondary">
-        Drawcast will spawn the configured CLI (Claude Code or Codex) here in a
-        later PR. For now this is a typed placeholder so the layout, splitter,
-        and theme tokens can be reviewed in isolation.
-      </p>
-    </PanelShell>
   );
 }

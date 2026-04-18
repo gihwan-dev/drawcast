@@ -12,7 +12,11 @@ export interface SettingsState {
   /** 0..1 — fraction of horizontal space given to the left (terminal) panel. */
   panelRatio: number;
   setThemeMode(m: ThemeMode): void;
-  setCliChoice(c: Exclude<CliChoice, null>): void;
+  /**
+   * Persist the user's preferred CLI. `null` represents "no CLI attached" —
+   * matches the CliSelect "None" option.
+   */
+  setCliChoice(c: CliChoice): void;
   setPanelRatio(r: number): void;
 }
 

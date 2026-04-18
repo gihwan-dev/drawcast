@@ -7,6 +7,7 @@ export interface SessionState {
   id: string | null;
   path: string | null;
   setSession(id: string, path: string): void;
+  setPath(path: string): void;
   clear(): void;
 }
 
@@ -14,5 +15,6 @@ export const useSessionStore = create<SessionState>((set) => ({
   id: null,
   path: null,
   setSession: (id, path) => set({ id, path }),
+  setPath: (path) => set({ path }),
   clear: () => set({ id: null, path: null }),
 }));
