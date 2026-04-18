@@ -16,10 +16,32 @@ import type { ToolDefinition } from './types.js';
 import { drawUpsertBox } from './drawUpsertBox.js';
 import { drawUpsertEdge } from './drawUpsertEdge.js';
 import { drawUpsertSticky } from './drawUpsertSticky.js';
+import { drawUpsertGroup } from './drawUpsertGroup.js';
+import { drawUpsertFrame } from './drawUpsertFrame.js';
+import { drawUpsertShape } from './drawUpsertShape.js';
+import { drawGetScene } from './drawGetScene.js';
+import { drawGetPrimitive } from './drawGetPrimitive.js';
+import { drawGetSelection } from './drawGetSelection.js';
+import { drawListStylePresets } from './drawListStylePresets.js';
+import { drawRemove } from './drawRemove.js';
+import { drawClear } from './drawClear.js';
+import { drawSetTheme } from './drawSetTheme.js';
+import { drawExport } from './drawExport.js';
 
 export { drawUpsertBox } from './drawUpsertBox.js';
 export { drawUpsertEdge } from './drawUpsertEdge.js';
 export { drawUpsertSticky } from './drawUpsertSticky.js';
+export { drawUpsertGroup } from './drawUpsertGroup.js';
+export { drawUpsertFrame } from './drawUpsertFrame.js';
+export { drawUpsertShape } from './drawUpsertShape.js';
+export { drawGetScene } from './drawGetScene.js';
+export { drawGetPrimitive } from './drawGetPrimitive.js';
+export { drawGetSelection } from './drawGetSelection.js';
+export { drawListStylePresets } from './drawListStylePresets.js';
+export { drawRemove } from './drawRemove.js';
+export { drawClear } from './drawClear.js';
+export { drawSetTheme } from './drawSetTheme.js';
+export { drawExport } from './drawExport.js';
 export { defineTool } from './types.js';
 export type {
   ToolDefinition,
@@ -28,13 +50,26 @@ export type {
 } from './types.js';
 
 /**
- * Canonical list of tools shipped with the MCP server. PR #10 extends this
- * with the remaining twelve primitives / query / theme tools.
+ * Canonical list of tools shipped with the MCP server — the full 15-tool
+ * surface. PR #9 seeded this with the three upsert primitives; PR #10
+ * completes it with the structural / coverage / query / mutation / theme /
+ * export tools.
  */
 export const coreTools: readonly ToolDefinition<z.ZodTypeAny>[] = [
   drawUpsertBox,
   drawUpsertEdge,
   drawUpsertSticky,
+  drawUpsertGroup,
+  drawUpsertFrame,
+  drawUpsertShape,
+  drawGetScene,
+  drawGetPrimitive,
+  drawGetSelection,
+  drawListStylePresets,
+  drawRemove,
+  drawClear,
+  drawSetTheme,
+  drawExport,
 ];
 
 /**

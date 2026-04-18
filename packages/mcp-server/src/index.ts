@@ -18,7 +18,7 @@ export {
 } from './store.js';
 export { connectStdio } from './transport/stdio.js';
 
-// Tool exports (PR #9).
+// Tool exports (PR #9 + PR #10 — full 14-tool surface).
 export {
   coreTools,
   registerTools,
@@ -26,6 +26,17 @@ export {
   drawUpsertBox,
   drawUpsertEdge,
   drawUpsertSticky,
+  drawUpsertGroup,
+  drawUpsertFrame,
+  drawUpsertShape,
+  drawGetScene,
+  drawGetPrimitive,
+  drawGetSelection,
+  drawListStylePresets,
+  drawRemove,
+  drawClear,
+  drawSetTheme,
+  drawExport,
   type ToolDefinition,
   type ToolExecutionResult,
   type ToolInputJsonSchema,

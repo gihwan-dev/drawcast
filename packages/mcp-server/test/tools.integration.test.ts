@@ -24,13 +24,30 @@ async function connectPair() {
 }
 
 describe('core tools registration', () => {
-  it('coreTools exposes exactly the three upsert primitives', () => {
-    expect(coreTools).toHaveLength(3);
-    expect(coreTools.map((t) => t.name).sort()).toEqual([
-      'draw_upsert_box',
-      'draw_upsert_edge',
-      'draw_upsert_sticky',
-    ]);
+  it('coreTools exposes the full 14-tool surface', () => {
+    // Note: the PR-10 plan phrases this as "15-tool surface"; the literal
+    // coreTools list in the spec is 14 (preview + clipboard are deferred to
+    // PR #18 / #19). Assert the 14-name snapshot so any accidental drop or
+    // dup is caught.
+    expect(coreTools).toHaveLength(14);
+    expect(coreTools.map((t) => t.name).sort()).toMatchInlineSnapshot(`
+      [
+        "draw_clear",
+        "draw_export",
+        "draw_get_primitive",
+        "draw_get_scene",
+        "draw_get_selection",
+        "draw_list_style_presets",
+        "draw_remove",
+        "draw_set_theme",
+        "draw_upsert_box",
+        "draw_upsert_edge",
+        "draw_upsert_frame",
+        "draw_upsert_group",
+        "draw_upsert_shape",
+        "draw_upsert_sticky",
+      ]
+    `);
   });
 
   it('every core tool produces a valid MCP Tool list item', () => {

@@ -41,9 +41,22 @@ describe('createServer', () => {
   it('responds to tools/list with the default core tool set', async () => {
     const { client } = await connectPair();
     const result = await client.listTools();
+    // Full 14-tool surface — PR #10 extends PR #9's three with structural,
+    // coverage, query, mutation, theme, and export tools.
     expect(result.tools.map((t) => t.name).sort()).toEqual([
+      'draw_clear',
+      'draw_export',
+      'draw_get_primitive',
+      'draw_get_scene',
+      'draw_get_selection',
+      'draw_list_style_presets',
+      'draw_remove',
+      'draw_set_theme',
       'draw_upsert_box',
       'draw_upsert_edge',
+      'draw_upsert_frame',
+      'draw_upsert_group',
+      'draw_upsert_shape',
       'draw_upsert_sticky',
     ]);
     for (const tool of result.tools) {
