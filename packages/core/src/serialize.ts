@@ -32,6 +32,14 @@ export interface ExcalidrawFileEnvelope {
     gridStep?: number;
   };
   files: BinaryFiles;
+  /**
+   * Optional `customData` bag passed through the envelope verbatim.
+   * Drawcast uses this to tuck the original L2 primitives + theme name
+   * into `customData.drawcastScene` so `scene.excalidraw` round-trips
+   * back through the MCP server on startup. Downstream Excalidraw apps
+   * ignore unknown keys, so this is harmless for visual consumers.
+   */
+  customData?: Record<string, unknown>;
 }
 
 /** Minimal clipboard envelope (no appState / version / source). */
@@ -48,6 +56,12 @@ export interface SerializeOptions {
   viewBackgroundColor?: string;
   /** Grid size; `null` disables the grid. */
   gridSize?: number | null;
+  /**
+   * Extra `customData` bag merged into the resulting envelope. Only emitted
+   * when provided; omit the field entirely when callers don't pass one so the
+   * on-disk envelope stays minimal.
+   */
+  customData?: Record<string, unknown>;
 }
 
 const DEFAULT_SOURCE = 'https://drawcast.local';
@@ -78,7 +92,7 @@ export function serializeAsExcalidrawFile(
       ? { viewBackgroundColor, gridSize: null }
       : { viewBackgroundColor, gridSize, gridStep: DEFAULT_GRID_STEP };
 
-  return {
+  const envelope: ExcalidrawFileEnvelope = {
     type: 'excalidraw',
     version: 2,
     source,
@@ -86,6 +100,10 @@ export function serializeAsExcalidrawFile(
     appState,
     files: result.files,
   };
+  if (options?.customData !== undefined) {
+    envelope.customData = options.customData;
+  }
+  return envelope;
 }
 
 /**

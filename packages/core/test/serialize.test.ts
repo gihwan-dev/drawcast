@@ -73,6 +73,23 @@ describe('serializeAsExcalidrawFile', () => {
     expect(env.appState.gridSize).toBe(20);
     expect(env.appState.gridStep).toBe(5);
   });
+
+  it('passes customData through when provided', () => {
+    const customData = {
+      drawcastScene: {
+        version: 1,
+        primitives: [{ kind: 'labelBox', id: 'a', at: [0, 0], shape: 'rectangle' }],
+        theme: 'sketchy',
+      },
+    };
+    const env = serializeAsExcalidrawFile(emptyResult(), { customData });
+    expect(env.customData).toEqual(customData);
+  });
+
+  it('omits customData entirely when not provided', () => {
+    const env = serializeAsExcalidrawFile(emptyResult());
+    expect('customData' in env).toBe(false);
+  });
 });
 
 describe('serializeAsClipboardJSON', () => {
