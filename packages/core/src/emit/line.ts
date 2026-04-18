@@ -60,7 +60,7 @@ export function emitLine(p: Line, ctx: CompileContext): void {
     roundness: p.rounded ? { type: 2 } : null,
     locked: p.locked ?? false,
     link: p.link ?? null,
-    ...(p.customData !== undefined ? { customData: p.customData } : {}),
+    customData: { ...(p.customData ?? {}), drawcastPrimitiveId: p.id },
   });
 
   const element: ExcalidrawLineElement = {

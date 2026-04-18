@@ -44,7 +44,7 @@ export function emitEmbed(p: Embed, ctx: CompileContext): void {
     locked: p.locked ?? false,
     // The URL travels on `link` so legacy loaders still see it.
     link: p.url,
-    ...(p.customData !== undefined ? { customData: p.customData } : {}),
+    customData: { ...(p.customData ?? {}), drawcastPrimitiveId: p.id },
   });
 
   const element: ExcalidrawIframeElement = {

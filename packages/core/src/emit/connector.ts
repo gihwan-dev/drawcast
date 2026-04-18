@@ -175,7 +175,7 @@ export function emitConnector(p: Connector, ctx: CompileContext): void {
     roundness: routing === 'curved' ? { type: 2 } : null,
     locked: p.locked ?? false,
     link: p.link ?? null,
-    ...(p.customData !== undefined ? { customData: p.customData } : {}),
+    customData: { ...(p.customData ?? {}), drawcastPrimitiveId: p.id },
   });
 
   const arrow: ExcalidrawArrowElement = {
@@ -231,6 +231,7 @@ export function emitConnector(p: Connector, ctx: CompileContext): void {
       opacity: p.opacity ?? 100,
       roundness: null,
       locked: p.locked ?? false,
+      customData: { drawcastPrimitiveId: p.id },
     });
 
     const label: ExcalidrawTextElement = {

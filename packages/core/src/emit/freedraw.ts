@@ -64,7 +64,7 @@ export function emitFreedraw(p: Freedraw, ctx: CompileContext): void {
     roundness: null,
     locked: p.locked ?? false,
     link: p.link ?? null,
-    ...(p.customData !== undefined ? { customData: p.customData } : {}),
+    customData: { ...(p.customData ?? {}), drawcastPrimitiveId: p.id },
   });
 
   const element: ExcalidrawFreedrawElement = {

@@ -274,3 +274,63 @@ describe('compile — warnings', () => {
     expect(rect).toBeDefined();
   });
 });
+
+describe('compile — customData.drawcastPrimitiveId', () => {
+  it('tags every emitted element with its owning primitive id', () => {
+    const box: LabelBox = {
+      kind: 'labelBox',
+      id: 'box-1' as PrimitiveId,
+      shape: 'rectangle',
+      at: [0, 0],
+      text: 'Hi',
+    };
+    const arrow: Connector = {
+      kind: 'connector',
+      id: 'arrow-1' as PrimitiveId,
+      from: [0, 0],
+      to: [100, 100],
+      label: 'goes',
+    };
+    const result = compile(makeScene([box, arrow]));
+    // Both LabelBox children (shape + text) carry box-1.
+    const boxElements = result.elements.filter(
+      (el) =>
+        (el.customData as { drawcastPrimitiveId?: string })
+          ?.drawcastPrimitiveId === 'box-1',
+    );
+    expect(boxElements.length).toBe(2);
+    // Connector arrow + label text both carry arrow-1.
+    const arrowElements = result.elements.filter(
+      (el) =>
+        (el.customData as { drawcastPrimitiveId?: string })
+          ?.drawcastPrimitiveId === 'arrow-1',
+    );
+    expect(arrowElements.length).toBe(2);
+    // Every element has a drawcastPrimitiveId.
+    for (const el of result.elements) {
+      const cd = el.customData as
+        | { drawcastPrimitiveId?: string }
+        | undefined;
+      expect(cd?.drawcastPrimitiveId).toBeDefined();
+    }
+  });
+
+  it('preserves user-supplied customData keys on the primitive', () => {
+    const box: LabelBox = {
+      kind: 'labelBox',
+      id: 'boxA' as PrimitiveId,
+      shape: 'rectangle',
+      at: [0, 0],
+      text: 'x',
+      customData: { owner: 'alice', tag: 42 },
+    };
+    const result = compile(makeScene([box]));
+    const shape = result.elements.find((el) => el.type === 'rectangle');
+    expect(shape).toBeDefined();
+    expect(shape!.customData).toEqual({
+      owner: 'alice',
+      tag: 42,
+      drawcastPrimitiveId: 'boxA',
+    });
+  });
+});

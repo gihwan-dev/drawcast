@@ -105,7 +105,7 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
     roundness,
     locked: p.locked ?? false,
     link: p.link ?? null,
-    ...(p.customData !== undefined ? { customData: p.customData } : {}),
+    customData: { ...(p.customData ?? {}), drawcastPrimitiveId: p.id },
   });
 
   const shape: ShapeElement = {
@@ -148,6 +148,7 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
       opacity: p.opacity ?? 100,
       roundness: null,
       locked: p.locked ?? false,
+      customData: { drawcastPrimitiveId: p.id },
     });
 
     const text: ExcalidrawTextElement = {

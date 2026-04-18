@@ -41,7 +41,7 @@ export function emitFrame(p: Frame, ctx: CompileContext): void {
     roundness: null,
     locked: p.locked ?? false,
     link: p.link ?? null,
-    ...(p.customData !== undefined ? { customData: p.customData } : {}),
+    customData: { ...(p.customData ?? {}), drawcastPrimitiveId: p.id },
   });
 
   if (p.magic === true) {
