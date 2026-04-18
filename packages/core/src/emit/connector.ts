@@ -16,11 +16,11 @@ import type {
   ExcalidrawArrowElement,
   ExcalidrawTextElement,
   FixedPointBinding,
-  LocalPoint,
   PointBinding,
 } from '../types/excalidraw.js';
 import type { CompileContext, PrimitiveRecord } from '../compile/context.js';
 import { resolveEdgeStyle } from '../compile/resolveStyle.js';
+import { normalizePoints } from './shared/points.js';
 
 // Elbow arrows oscillate when fixedPoint == [0.5, 0.5] (issue #9197).
 // Nudge slightly off-centre; Excalidraw snaps to the correct face on first
@@ -104,36 +104,6 @@ function buildRawPoints(
     [start[0], start[1]],
     [end[0], end[1]],
   ];
-}
-
-/**
- * Translate `points` so that points[0] === [0,0]. Returns normalised
- * local-point array and the bounding box width/height.
- */
-function normalizePoints(points: Point[]): {
-  points: LocalPoint[];
-  width: number;
-  height: number;
-} {
-  const first = points[0] ?? [0, 0];
-  const ox = first[0];
-  const oy = first[1];
-  const locals: LocalPoint[] = points.map(([px, py]) => [px - ox, py - oy]);
-  let minX = locals[0]?.[0] ?? 0;
-  let maxX = minX;
-  let minY = locals[0]?.[1] ?? 0;
-  let maxY = minY;
-  for (const [x, y] of locals) {
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
-  }
-  return {
-    points: locals,
-    width: maxX - minX,
-    height: maxY - minY,
-  };
 }
 
 function buildBinding(

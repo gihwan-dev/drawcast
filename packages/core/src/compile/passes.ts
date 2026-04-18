@@ -10,13 +10,17 @@ import { emitSticky } from '../emit/sticky.js';
 import { emitConnector } from '../emit/connector.js';
 import { applyGroup } from '../emit/group.js';
 import { emitFrame, applyFrameChildren } from '../emit/frame.js';
+import { emitLine } from '../emit/line.js';
+import { emitFreedraw } from '../emit/freedraw.js';
+import { emitImage } from '../emit/image.js';
+import { emitEmbed } from '../emit/embed.js';
 
 /**
  * Pass 1 — "Positional": emit shape + standalone element primitives and
  * record their bounding boxes. Connector/Group intentionally deferred.
  *
- * Coverage primitives (line, freedraw, image, embed) are skipped silently
- * for now; PR #6 will plug them in without re-plumbing callers.
+ * Coverage primitives (line, freedraw, image, embed) are emitted here too —
+ * they are standalone and do not require a binding pass.
  */
 export function passPositional(scene: Scene, ctx: CompileContext): void {
   for (const p of scene.primitives.values()) {
@@ -30,11 +34,17 @@ export function passPositional(scene: Scene, ctx: CompileContext): void {
       case 'frame':
         emitFrame(p, ctx);
         break;
-      // TODO(PR #6): line, freedraw, image, embed emitters go here.
       case 'line':
+        emitLine(p, ctx);
+        break;
       case 'freedraw':
+        emitFreedraw(p, ctx);
+        break;
       case 'image':
+        emitImage(p, ctx);
+        break;
       case 'embed':
+        emitEmbed(p, ctx);
         break;
       case 'connector':
       case 'group':

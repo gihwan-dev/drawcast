@@ -26,3 +26,18 @@ export {
   type TextMetrics,
 } from './measure.js';
 export { wrapText, type WrapParams } from './wrap.js';
+
+// Emitters (exported for testing; not part of the stable public API).
+export { emitLabelBox } from './emit/labelBox.js';
+export { emitSticky } from './emit/sticky.js';
+export { emitConnector } from './emit/connector.js';
+export { emitFrame, applyFrameChildren } from './emit/frame.js';
+export { applyGroup } from './emit/group.js';
+export { emitLine } from './emit/line.js';
+export { emitFreedraw } from './emit/freedraw.js';
+export { emitImage } from './emit/image.js';
+export { emitEmbed } from './emit/embed.js';
+export {
+  normalizePoints,
+  type NormalizedPoints,
+} from './emit/shared/points.js';
