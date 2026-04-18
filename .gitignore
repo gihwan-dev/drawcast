@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-node/
+.turbo/
+target/
+src-tauri/target/
+src-tauri/gen/
+.DS_Store
+*.log
+*.tsbuildinfo
+pnpm-debug.log*
