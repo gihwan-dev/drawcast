@@ -56,12 +56,26 @@ export function Excalidraw(props: ExcalidrawProps): JSX.Element {
     ? (elements, appState) => props.onChange!(elements, appState, {})
     : null;
 
-  const apiRef = useRef<{ updateScene: (d: { elements: readonly unknown[] }) => void; addFiles: (f: unknown[]) => void } | null>(null);
+  const apiRef = useRef<{
+    updateScene: (d: {
+      elements?: readonly unknown[];
+      appState?: unknown;
+    }) => void;
+    addFiles: (f: unknown[]) => void;
+  } | null>(null);
 
   if (apiRef.current === null) {
     apiRef.current = {
-      updateScene: (data: { elements: readonly unknown[] }) => {
-        state.lastElements = data.elements;
+      updateScene: (data: {
+        elements?: readonly unknown[];
+        appState?: unknown;
+      }) => {
+        // Only mutate `lastElements` when the call actually supplies them.
+        // PR #17 issues appState-only updates for inbound selection sync —
+        // those shouldn't clobber the captured element array.
+        if (data.elements !== undefined) {
+          state.lastElements = data.elements;
+        }
         state.apiCalls.push({ kind: 'updateScene', arg: data });
       },
       addFiles: (files: unknown[]) => {

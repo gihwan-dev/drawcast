@@ -5,18 +5,33 @@
 //   server -> sceneStore -> compile() -> api.updateScene + api.addFiles
 //   user onChange -> map element ids -> primitive ids -> client.postSelection
 //
+// PR #17 adds three selection-related affordances on top of PR #13:
+//   1. Inbound selection: when `sceneStore.selection` changes (server push),
+//      translate primitive ids back to Excalidraw element ids and push them
+//      into `appState.selectedElementIds`. A `lastPushed` guard prevents
+//      the outbound observer from echoing the update back to the server.
+//   2. Right-click on a selected element opens a tiny floating menu with
+//      one item, "Give feedback on this node". Clicking it prefills the
+//      active terminal with `[node: <primitiveId>] `.
+//   3. A selection indicator chip in the top-right shows the count and
+//      primitive kind(s), plus an `Esc` affordance to clear.
+//
 // The compile happens in the browser because it's a pure function on the
 // already-loaded primitive array. We reuse `resolveBuiltinTheme` to pair
 // the snapshot's theme name with the concrete Theme object.
-//
-// Edit-lock round-tripping (user edits bumping element.version) is not
-// wired in PR #13 — see the TODO below. PR #20 owns it.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import type { Primitive, Scene } from '@drawcast/core';
 import { compile } from '@drawcast/core';
 import type { CompileResult } from '@drawcast/core';
+import { writeToActiveTerminal } from './TerminalPanel.js';
 import { useSceneStore } from '../store/sceneStore.js';
 import { useSettingsStore } from '../store/settingsStore.js';
 import { resolveBuiltinTheme } from '../theme/builtinThemes.js';
@@ -35,8 +50,13 @@ interface ExcalidrawAppStateLike {
   selectedElementIds: Readonly<Record<string, true>>;
 }
 
+type SelectedElementIds = Readonly<Record<string, true>>;
+
 interface ExcalidrawImperativeAPILike {
-  updateScene: (data: { elements: readonly unknown[] }) => void;
+  updateScene: (data: {
+    elements?: readonly unknown[];
+    appState?: { selectedElementIds?: SelectedElementIds };
+  }) => void;
   addFiles: (files: unknown[]) => void;
 }
 
@@ -72,20 +92,66 @@ function arrayEquals(a: readonly string[], b: readonly string[]): boolean {
   return true;
 }
 
+/** Human-readable label for a primitive kind, used in the selection chip. */
+function kindLabel(kind: Primitive['kind']): string {
+  switch (kind) {
+    case 'labelBox':
+      return 'box';
+    case 'connector':
+      return 'edge';
+    case 'sticky':
+      return 'sticky';
+    case 'group':
+      return 'group';
+    case 'frame':
+      return 'frame';
+    case 'line':
+      return 'line';
+    case 'freedraw':
+      return 'sketch';
+    case 'image':
+      return 'image';
+    case 'embed':
+      return 'embed';
+    default:
+      return 'element';
+  }
+}
+
 const SELECTION_DEBOUNCE_MS = 150;
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  primitiveId: string;
+}
 
 export function CanvasPanel(): JSX.Element {
   const primitives = useSceneStore((s) => s.primitives);
   const themeName = useSceneStore((s) => s.theme);
+  const storeSelection = useSceneStore((s) => s.selection);
   const setSelection = useSceneStore((s) => s.setSelection);
   const themeMode = useSettingsStore((s) => s.themeMode);
   const client = useMcp();
   const connected = useMcpConnected();
   const [apiReady, setApiReady] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   const apiRef = useRef<ExcalidrawImperativeAPILike | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPushedRef = useRef<string[]>([]);
+  // Tracks the primitive id set that we most recently pushed INTO the
+  // canvas (from the server). When onChange fires with a matching set we
+  // treat it as a loopback — see the outbound guard in `onChange`.
+  const lastAppliedRef = useRef<string[]>([]);
+  // When onChange originates from the user (rather than an inbound apply),
+  // it calls `setSelection` which re-triggers the inbound effect. That
+  // re-application is a no-op for Excalidraw (user already has it selected)
+  // but would corrupt the outbound-dedupe ref. Flipping this flag from
+  // `onChange` tells the inbound effect to sync `lastAppliedRef` silently
+  // without issuing an updateScene.
+  const skipNextApplyRef = useRef<boolean>(false);
 
   // Compile whenever the scene snapshot changes. The compile is pure, but
   // we still memoize so re-renders triggered by other props (themeMode)
@@ -110,6 +176,47 @@ export function CanvasPanel(): JSX.Element {
     }
   }, [apiReady, compiled]);
 
+  // Inbound selection sync: when sceneStore.selection changes (pushed by
+  // the server or the setSelection helper), translate primitive ids back
+  // to element ids via customData round-trip and write them into Excalidraw's
+  // appState. We dedupe via `lastAppliedRef` so the outbound onChange handler
+  // doesn't immediately re-POST the same ids.
+  useEffect(() => {
+    if (!apiReady) return;
+    const api = apiRef.current;
+    if (api === null) return;
+    const elements = compiled?.elements ?? [];
+    if (elements.length === 0) return;
+
+    const desired = [...storeSelection].sort();
+    // Avoid a no-op updateScene if nothing changed relative to the last
+    // apply. `lastAppliedRef.current` is already sorted.
+    if (arrayEquals(desired, lastAppliedRef.current)) return;
+
+    // When the selection change came from our own onChange handler (user
+    // selected on the canvas) Excalidraw is already showing it — we don't
+    // need to reapply. But we DO need to update `lastAppliedRef` so it
+    // stays honest about the current DOM state.
+    if (skipNextApplyRef.current) {
+      skipNextApplyRef.current = false;
+      lastAppliedRef.current = desired;
+      return;
+    }
+
+    const wanted = new Set(desired);
+    const elementIds: string[] = [];
+    for (const el of elements as readonly ExcalidrawElementLike[]) {
+      const pid = extractPrimitiveId(el);
+      if (pid !== null && wanted.has(pid)) {
+        elementIds.push(el.id);
+      }
+    }
+    const selectedElementIds: Record<string, true> = {};
+    for (const id of elementIds) selectedElementIds[id] = true;
+    lastAppliedRef.current = desired;
+    api.updateScene({ appState: { selectedElementIds } });
+  }, [apiReady, compiled, storeSelection]);
+
   // Clean up the debounce timer on unmount.
   useEffect(() => {
     return () => {
@@ -119,6 +226,80 @@ export function CanvasPanel(): JSX.Element {
       }
     };
   }, []);
+
+  // Close the context menu on Escape or on any click outside its DOM.
+  useEffect(() => {
+    if (contextMenu === null) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    const onClick = (e: MouseEvent): void => {
+      const tgt = e.target as Node | null;
+      const menu = document.querySelector('[data-testid="dc-context-menu"]');
+      if (menu === null || tgt === null) {
+        setContextMenu(null);
+        return;
+      }
+      if (!menu.contains(tgt)) setContextMenu(null);
+    };
+    window.addEventListener('keydown', onKey);
+    // `mousedown` rather than `click` so we dismiss before the click
+    // bubbles into any underlying canvas tool.
+    window.addEventListener('mousedown', onClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onClick);
+    };
+  }, [contextMenu]);
+
+  // Show a feedback menu when the user right-clicks a currently-selected
+  // primitive. We key on sceneStore.selection rather than digging into
+  // Excalidraw's internal state so the menu stays consistent with the chip.
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>): void => {
+      if (storeSelection.length === 0) return;
+      const first = storeSelection[0];
+      if (first === undefined) return;
+      e.preventDefault();
+      setContextMenu({ x: e.clientX, y: e.clientY, primitiveId: first });
+    },
+    [storeSelection],
+  );
+
+  const onFeedbackClick = useCallback((): void => {
+    if (contextMenu === null) return;
+    writeToActiveTerminal(`[node: ${contextMenu.primitiveId}] `);
+    setContextMenu(null);
+  }, [contextMenu]);
+
+  const clearSelection = useCallback((): void => {
+    const api = apiRef.current;
+    if (api !== null) {
+      api.updateScene({ appState: { selectedElementIds: {} } });
+    }
+    setSelection([]);
+    lastAppliedRef.current = [];
+    lastPushedRef.current = [];
+  }, [setSelection]);
+
+  // Derive the chip label. Prefer primitive kind summary; fall back to count.
+  const chipLabel = useMemo((): string | null => {
+    if (storeSelection.length === 0) return null;
+    const kinds = new Set<string>();
+    const byId = new Map<string, Primitive>();
+    for (const p of primitives) byId.set(p.id, p);
+    for (const id of storeSelection) {
+      const p = byId.get(id);
+      if (p !== undefined) kinds.add(kindLabel(p.kind));
+    }
+    const kindStr = [...kinds].join(', ');
+    if (storeSelection.length === 1) {
+      return kindStr.length > 0 ? `1 ${kindStr}` : '1 selected';
+    }
+    return kindStr.length > 0
+      ? `${storeSelection.length} selected (${kindStr})`
+      : `${storeSelection.length} selected`;
+  }, [primitives, storeSelection]);
 
   const onChange = (
     elements: readonly ExcalidrawElementLike[],
@@ -139,9 +320,21 @@ export function CanvasPanel(): JSX.Element {
       if (pid !== null) primitiveIds.add(pid);
     }
     const nextIds = [...primitiveIds];
-    // Reflect locally immediately so any selection-dependent UI doesn't
-    // need to wait for the POST round-trip.
-    setSelection(nextIds);
+    const sorted = [...nextIds].sort();
+
+    // Classify this onChange:
+    //   - If it matches the selection we most recently applied INTO the
+    //     canvas, it's the loopback echo of our own updateScene call. The
+    //     store is already in sync; nothing to do.
+    //   - Otherwise the user drove the change. Flip `skipNextApplyRef` so
+    //     the inbound effect doesn't re-write the same ids into
+    //     Excalidraw, and update the store so the chip / context menu see
+    //     a current selection.
+    const isLoopback = arrayEquals(sorted, lastAppliedRef.current);
+    if (!isLoopback) {
+      skipNextApplyRef.current = true;
+      setSelection(nextIds);
+    }
 
     if (debounceRef.current !== null) {
       clearTimeout(debounceRef.current);
@@ -149,8 +342,10 @@ export function CanvasPanel(): JSX.Element {
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
       if (client === null) return;
-      if (arrayEquals(nextIds, lastPushedRef.current)) return;
-      lastPushedRef.current = nextIds;
+      if (isLoopback) return;
+      // Dedupe rapid-fire outbound posts (moving a selection tool in a drag).
+      if (arrayEquals(sorted, lastPushedRef.current)) return;
+      lastPushedRef.current = sorted;
       void client.postSelection(nextIds).catch((err: unknown) => {
         // eslint-disable-next-line no-console
         console.warn('[canvas] postSelection failed', err);
@@ -165,8 +360,10 @@ export function CanvasPanel(): JSX.Element {
 
   return (
     <div
+      ref={containerRef}
       data-testid="dc-canvas-panel"
       className="relative h-full w-full"
+      onContextMenu={handleContextMenu}
     >
       <Excalidraw
         excalidrawAPI={(api) => {
@@ -180,6 +377,46 @@ export function CanvasPanel(): JSX.Element {
           appState: { viewBackgroundColor: '#ffffff' },
         }}
       />
+      {chipLabel !== null && (
+        <div
+          data-testid="dc-selection-chip"
+          className="pointer-events-auto absolute right-dc-md top-dc-md z-10 flex items-center gap-dc-xs rounded-dc-full border border-dc-border-hairline bg-dc-bg-elevated px-dc-md py-1 text-[12px] text-dc-text-primary shadow-dc-e1"
+        >
+          <span className="inline-block h-1.5 w-1.5 rounded-dc-full bg-dc-accent-primary" />
+          <span>{chipLabel}</span>
+          <button
+            type="button"
+            data-testid="dc-selection-clear"
+            onClick={clearSelection}
+            className="ml-dc-xs rounded-dc-sm px-dc-xs text-[11px] font-mono text-dc-text-secondary hover:bg-dc-bg-hover"
+            aria-label="Clear selection"
+          >
+            Esc
+          </button>
+        </div>
+      )}
+      {contextMenu !== null && (
+        <div
+          data-testid="dc-context-menu"
+          role="menu"
+          style={{
+            position: 'fixed',
+            left: `${contextMenu.x}px`,
+            top: `${contextMenu.y}px`,
+            zIndex: 50,
+          }}
+          className="min-w-[220px] rounded-dc-md border border-dc-border-hairline bg-dc-bg-elevated py-dc-xs text-[13px] text-dc-text-primary shadow-dc-e2"
+        >
+          <button
+            type="button"
+            data-testid="dc-context-menu-feedback"
+            onClick={onFeedbackClick}
+            className="block w-full px-dc-md py-dc-sm text-left hover:bg-dc-bg-hover"
+          >
+            Give feedback on this node
+          </button>
+        </div>
+      )}
       {showOverlay && (
         <div
           role="status"
