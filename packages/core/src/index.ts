@@ -1,6 +1,7 @@
 export * from './primitives.js';
 export * from './theme.js';
 export * from './compile/index.js';
+export * from './types/excalidraw.js';
 
 // Utilities
 export { newElementId, newPrimitiveId, randomInteger } from './utils/id.js';
