@@ -57,6 +57,7 @@ pub fn run() {
             clipboard_write_text,
             save_export_bytes,
             check_for_updates,
+            check_cli_installed,
         ])
         .setup(|app| {
             // Bootstrap the default session directory + metadata, then spawn
@@ -279,6 +280,17 @@ async fn cli_shutdown(app: tauri::AppHandle) -> Result<(), String> {
         host.shutdown().await.map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Welcome / onboarding probe: reports whether a given CLI is installed in
+/// a location the app knows how to spawn from. Reuses
+/// `cli_host::resolve_binary` so detection and spawn stay in lock-step —
+/// if this returns `true` the Connect CTA can enable, and `spawn_cli`
+/// will find the same binary.
+#[tauri::command]
+fn check_cli_installed(which: String) -> Result<bool, String> {
+    let kind = CliKind::from_str(&which).map_err(|e| e.to_string())?;
+    Ok(cli_host::resolve_binary(kind).is_ok())
 }
 
 #[tauri::command]

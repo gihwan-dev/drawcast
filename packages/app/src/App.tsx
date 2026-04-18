@@ -10,12 +10,14 @@ import {
 import { useMcpConnected } from './mcp/context.js';
 import { CanvasPanel } from './panels/CanvasPanel.js';
 import { TerminalPanel } from './panels/TerminalPanel.js';
+import { Welcome } from './pages/Welcome.js';
 import { getDefaultSessionPath } from './services/cli.js';
 import { subscribeSessionSwitched } from './services/session.js';
 import { useSceneStore } from './store/sceneStore.js';
 import { useSessionStore } from './store/sessionStore.js';
 import { useSettingsStore } from './store/settingsStore.js';
 import { useSidecarStore } from './store/sidecarStore.js';
+import { useWelcomeStore } from './store/welcomeStore.js';
 
 /**
  * Root app layout: TopBar + left/right split + StatusBar.
@@ -29,6 +31,8 @@ export function App(): JSX.Element {
   const panelRatio = useSettingsStore((s) => s.panelRatio);
   const setPanelRatio = useSettingsStore((s) => s.setPanelRatio);
   const themeMode = useSettingsStore((s) => s.themeMode);
+  const cliChoice = useSettingsStore((s) => s.cliChoice);
+  const welcomeDismissed = useWelcomeStore((s) => s.dismissed);
   const connected = useMcpConnected();
 
   const setReady = useSidecarStore((s) => s.setReady);
@@ -110,8 +114,15 @@ export function App(): JSX.Element {
     };
   }, [loadSessions, refreshSessionList, resetScene, setCurrentSession]);
 
+  // Show Welcome on first launch — when the user has neither dismissed
+  // it nor committed to a CLI. Connecting through the Welcome CTA sets
+  // `cliChoice`, which hides the overlay naturally; "Skip for now" sets
+  // `dismissed` so reopening the app doesn't re-prompt even when no CLI
+  // is still attached.
+  const showWelcome = !welcomeDismissed && cliChoice === null;
+
   return (
-    <div className="flex h-screen flex-col bg-dc-bg-app text-dc-text-primary">
+    <div className="relative flex h-screen flex-col bg-dc-bg-app text-dc-text-primary">
       <TopBar />
       <Splitter
         ratio={panelRatio}
@@ -121,6 +132,7 @@ export function App(): JSX.Element {
       />
       <StatusBar />
       <ToastStack />
+      {showWelcome && <Welcome />}
     </div>
   );
 }

@@ -125,13 +125,82 @@ The Rust side registers `tauri-plugin-updater` in
 [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) and also exposes a
 `check_for_updates` Tauri command for the equivalent Rust-driven check.
 
-## 7. Known follow-ups
+## 7. Code signing (Phase 6.3)
 
-- **Code signing (Phase 6.3)** — Apple Developer ID + notarization, plus
-  Windows EV signing, both of which will change the bundle hashes and
-  therefore require regenerating `latest.json`.
+PR #22 wires the CI surface for Apple + Windows signing. The workflow
+steps are always present; they no-op when the corresponding `secrets.*`
+entries are unset, so an unsigned dev-fork build keeps working. Once the
+secrets are populated on the release repo, every bundle produced by the
+matrix is signed (and on macOS, notarized).
+
+`packages/app/src-tauri/tauri.conf.json` ships with
+`bundle.macOS.signingIdentity = "-"` — that's ad-hoc signing during CI,
+which Tauri overrides at build time from the `APPLE_SIGNING_IDENTITY`
+env var. The real identity is injected by the GitHub Actions env block;
+leaving `-` in the config file keeps local `tauri dev` / `tauri build`
+working without a certificate on developer laptops.
+
+### macOS — required GitHub Secrets
+
+| Secret | Purpose |
+| --- | --- |
+| `APPLE_CERTIFICATE` | Base64-encoded `.p12` export of the Developer ID Application cert + private key. |
+| `APPLE_CERTIFICATE_PASSWORD` | The password the `.p12` was exported with. |
+| `APPLE_SIGNING_IDENTITY` | The cert's common name, e.g. `Developer ID Application: Your Name (TEAMID)`. |
+| `APPLE_ID` | Apple ID email used for notarization (the account that owns the cert). |
+| `APPLE_PASSWORD` | **App-specific** password for that Apple ID (generated at appleid.apple.com → Sign-In & Security). Not the login password. |
+| `APPLE_TEAM_ID` | Ten-character Team ID from developer.apple.com → Membership. |
+
+Export the cert from Keychain Access (right-click the `Developer ID
+Application: …` entry → Export → `.p12`, set a password). On the
+machine doing the export:
+
+```sh
+base64 -i DeveloperID.p12 | pbcopy
+```
+
+Paste the clipboard contents into the `APPLE_CERTIFICATE` secret.
+
+Notarization runs automatically once all six macOS secrets are set — no
+additional workflow plumbing. Tauri 2 passes the credentials to
+`notarytool` under the hood.
+
+### Windows — required GitHub Secrets
+
+| Secret | Purpose |
+| --- | --- |
+| `WINDOWS_CERTIFICATE` | Base64-encoded `.pfx` containing the signing cert + private key. |
+| `WINDOWS_CERTIFICATE_PASSWORD` | Password the `.pfx` was exported with. |
+
+For development you can mint a self-signed cert (`New-SelfSignedCertificate`
+in PowerShell, export to `.pfx`) — the resulting bundle triggers
+SmartScreen warnings but installs. For production releases use an EV
+Code Signing certificate from a recognised CA (DigiCert, Sectigo);
+`tauri.conf.json` already sets `timestampUrl` at
+`http://timestamp.digicert.com` so the signature survives cert
+expiration.
+
+To base64 the `.pfx`:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes('drawcast.pfx')) | clip
+```
+
+### Local verification
+
+The macOS import step uses `security create-keychain` which needs
+interactive auth on a developer Mac; it's CI-only. If you need to test
+signing locally, run `tauri build` with `APPLE_SIGNING_IDENTITY` set and
+the cert already present in your login keychain — Tauri will pick it up
+via the same env var path.
+
+## 8. Known follow-ups
+
 - **Clippy `-D warnings`** — the existing codebase has a handful of
   non-blocking clippy suggestions. Once those are cleaned up, re-enable
   `-D warnings` in `.github/workflows/ci.yml`.
-- **`latest.json` generation** — should be done in-workflow once signing
-  is in place; for now it's a manual post-step.
+- **`latest.json` generation** — should be done in-workflow once a first
+  signed release is out; for now it's a manual post-step (see §4).
+- **Release publisher info** — fill in the repo owner in
+  `tauri.conf.json` → `plugins.updater.endpoints[0]` and the embedded
+  `pubkey` before cutting the first tag.

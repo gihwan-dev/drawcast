@@ -25,7 +25,18 @@
     "active": true,
     "targets": "all",
     "icon": ["icons/icon.png"],
-    "externalBin": ["binaries/drawcast-mcp"]
+    "externalBin": ["binaries/drawcast-mcp"],
+    "macOS": {
+      "signingIdentity": "-",
+      "providerShortName": null,
+      "entitlements": null,
+      "hardenedRuntime": true
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com"
+    }
   },
   "plugins": {
     "shell": {

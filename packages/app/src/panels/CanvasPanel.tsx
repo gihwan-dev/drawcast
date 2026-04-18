@@ -29,7 +29,6 @@ import {
 } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import type {
-  BinaryFiles,
   ExcalidrawElement,
   Primitive,
   Scene,

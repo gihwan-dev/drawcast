@@ -216,7 +216,11 @@ where
 /// Resolve the CLI binary. Preference order:
 /// 1. On `PATH` (via `which`) — honours the user's shell config.
 /// 2. Well-known fallbacks for each CLI.
-fn resolve_binary(which: CliKind) -> Result<PathBuf> {
+///
+/// Exposed so the `check_cli_installed` Tauri command (PR #22 onboarding)
+/// can share the same resolution logic — if `spawn` would find a binary
+/// here, the Welcome screen should show "detected".
+pub fn resolve_binary(which: CliKind) -> Result<PathBuf> {
     let names: &[&str] = match which {
         CliKind::Claude => &["claude"],
         CliKind::Codex => &["codex"],
@@ -310,5 +314,23 @@ mod tests {
     fn expand_tilde_passes_non_tilde_paths_through() {
         let expanded = expand_tilde("/absolute/path");
         assert_eq!(expanded, PathBuf::from("/absolute/path"));
+    }
+
+    #[test]
+    fn resolve_binary_errors_when_path_is_empty() {
+        // Exercise the public API the onboarding probe consumes. With no
+        // PATH and no fallbacks present, resolution must surface a clear
+        // error so `check_cli_installed` can return `false`.
+        let saved = std::env::var_os("PATH");
+        // Point PATH at an empty scratch dir so the lookup can't succeed.
+        let scratch = tempfile::tempdir().expect("tempdir");
+        std::env::set_var("PATH", scratch.path());
+        let result = resolve_binary(CliKind::Codex);
+        if let Some(p) = saved {
+            std::env::set_var("PATH", p);
+        } else {
+            std::env::remove_var("PATH");
+        }
+        assert!(result.is_err(), "expected resolve_binary to fail under empty PATH");
     }
 }

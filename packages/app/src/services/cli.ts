@@ -38,6 +38,23 @@ export async function registerCli(
   return (await invoke<string>('register_cli', { which })) as RegistrationStatus;
 }
 
+/**
+ * Ask the Rust side whether a given CLI is installed in a location the
+ * app knows how to spawn from. Shares resolution logic with `spawn_cli`
+ * (both go through `cli_host::resolve_binary`), so a `true` here means
+ * the Welcome CTA can safely enable the Connect button.
+ *
+ * Returns `false` on any IPC error so the UI degrades gracefully in
+ * non-Tauri contexts (tests, storybook, web preview builds).
+ */
+export async function checkCliInstalled(which: CliChoice): Promise<boolean> {
+  try {
+    return await invoke<boolean>('check_cli_installed', { which });
+  } catch {
+    return false;
+  }
+}
+
 export async function getDefaultSessionPath(): Promise<string | null> {
   try {
     return await invoke<string>('get_default_session_path');

@@ -87,10 +87,62 @@ jobs:
       - name: Build Vite frontend
         run: pnpm --filter @drawcast/app build:vite
 
+      # --- Code signing setup (PR #22, Phase 6.3) --------------------
+      # macOS path: decode the base64 .p12, import into a scratch keychain,
+      # unlock it, and let `tauri build` pick up APPLE_SIGNING_IDENTITY
+      # automatically. Notarization happens in-line when APPLE_ID +
+      # APPLE_PASSWORD (app-specific) + APPLE_TEAM_ID are all set.
+      - name: Import Apple code-signing certificate
+        if: startsWith(matrix.os, 'macos') && env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/drawcast-release.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/drawcast-apple-cert.p12"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychain -d user | tr -d '"')
+          rm -f "$CERT_PATH"
+
+      # Windows path: decode the base64 .pfx to disk, then rely on Tauri's
+      # bundler to pick it up via WINDOWS_CERTIFICATE / _PASSWORD env vars
+      # (see tauri.conf.json — certificateThumbprint null means "use env").
+      - name: Stage Windows code-signing certificate
+        if: matrix.os == 'windows-latest' && env.WINDOWS_CERTIFICATE != ''
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/drawcast-windows-cert.pfx"
+          echo "$WINDOWS_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          echo "WINDOWS_CERTIFICATE_FILE=$CERT_PATH" >> "$GITHUB_ENV"
+
       - name: Tauri bundle
         env:
+          # Tauri updater signing (PR #21)
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # macOS code signing (PR #22)
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows code signing (PR #22)
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: pnpm --filter @drawcast/app exec tauri build --target ${{ matrix.triple }}
 
       - name: Upload bundle artifacts

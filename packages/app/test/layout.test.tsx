@@ -4,6 +4,7 @@ import { App } from '../src/App.js';
 import { useCliStore } from '../src/store/cliStore.js';
 import { useSidecarStore } from '../src/store/sidecarStore.js';
 import { useSettingsStore } from '../src/store/settingsStore.js';
+import { useWelcomeStore } from '../src/store/welcomeStore.js';
 
 describe('App layout', () => {
   beforeEach(() => {
@@ -20,6 +21,10 @@ describe('App layout', () => {
         panelRatio: 0.4,
       });
       useCliStore.setState({ running: false, which: null });
+      // These tests predate the Welcome overlay (PR #22). Dismiss it so
+      // `App` mounts in the workspace-only state and TopBar is the sole
+      // surface holding the "Drawcast" text / status bar / CLI badge.
+      useWelcomeStore.setState({ dismissed: true });
     });
   });
 
