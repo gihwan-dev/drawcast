@@ -17,6 +17,15 @@ export {
   type SceneStoreChangeEvent,
 } from './store.js';
 export { connectStdio } from './transport/stdio.js';
+export {
+  startSSE,
+  type SSEOptions,
+  type SSEHandle,
+} from './transport/sse.js';
+export {
+  ScenePersistence,
+  type PersistenceOptions,
+} from './persistence.js';
 
 // Tool exports (PR #9 + PR #10 — full 14-tool surface).
 export {
