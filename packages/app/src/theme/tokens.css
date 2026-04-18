@@ -1,0 +1,129 @@
+/*
+ * Drawcast design tokens — CSS variables for the app shell.
+ *
+ * Source of truth: docs/06a-ui-design.md §2 (colors), §5.2 (spacing),
+ * §5.3 (radius), §9 (motion). Light values live on `:root`; dark values
+ * override them under `[data-theme='dark']`. Tailwind consumes these
+ * variables via the `dc` theme extension in `tailwind.config.cjs`.
+ */
+
+:root {
+  /* Surfaces */
+  --dc-bg-app: #FBF8F3;
+  --dc-bg-panel: #F4F0E8;
+  --dc-bg-elevated: #FFFFFF;
+  --dc-bg-canvas-stage: #FFFFFF;
+  --dc-bg-hover: #EFE9DC;
+  --dc-bg-active: #E8E1D0;
+  --dc-bg-selection: #FFE7B0;
+
+  /* Borders */
+  --dc-border-hairline: #E5DFD3;
+  --dc-border-strong: #C9C0AE;
+  --dc-border-focus: #C92A2A;
+
+  /* Text */
+  --dc-text-primary: #1E1E1E;
+  --dc-text-secondary: #5C5751;
+  --dc-text-tertiary: #9C9590;
+  --dc-text-inverse: #FBF8F3;
+
+  /* Accent + status */
+  --dc-accent-primary: #C92A2A;
+  --dc-accent-primary-hover: #A61F1F;
+  --dc-status-success: #2F9E44;
+  --dc-status-warning: #E8590C;
+  --dc-status-danger: #9B2C2C;
+  --dc-status-info: #1971C2;
+
+  /* Terminal (stays dark in light mode — dev convention) */
+  --dc-terminal-bg: #1E1E1E;
+  --dc-terminal-fg: #EDE6D7;
+
+  /* Radius */
+  --dc-radius-sm: 4px;
+  --dc-radius-md: 6px;
+  --dc-radius-lg: 10px;
+  --dc-radius-full: 999px;
+
+  /* Spacing — 4pt grid */
+  --dc-space-xxs: 2px;
+  --dc-space-xs: 4px;
+  --dc-space-sm: 8px;
+  --dc-space-md: 12px;
+  --dc-space-lg: 16px;
+  --dc-space-xl: 24px;
+  --dc-space-2xl: 32px;
+  --dc-space-3xl: 48px;
+
+  /* Motion */
+  --dc-motion-fast: 120ms;
+  --dc-motion-base: 200ms;
+  --dc-motion-slow: 320ms;
+  --dc-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Elevation */
+  --dc-shadow-e1: 0 2px 6px rgba(30, 30, 30, 0.05);
+  --dc-shadow-e2: 0 8px 24px rgba(30, 30, 30, 0.08);
+  --dc-shadow-e3: 0 20px 48px rgba(30, 30, 30, 0.12);
+
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --dc-bg-app: #1A1715;
+  --dc-bg-panel: #222020;
+  --dc-bg-elevated: #2A2724;
+  --dc-bg-canvas-stage: #FFFFFF; /* Canvas stays white even in dark mode */
+  --dc-bg-hover: #2D2925;
+  --dc-bg-active: #363129;
+  --dc-bg-selection: #5A4A1F;
+
+  --dc-border-hairline: #3A332B;
+  --dc-border-strong: #5A5048;
+  --dc-border-focus: #FF6B6B;
+
+  --dc-text-primary: #EDE6D7;
+  --dc-text-secondary: #A8A097;
+  --dc-text-tertiary: #6E665E;
+  --dc-text-inverse: #1A1715;
+
+  --dc-accent-primary: #FF6B6B;
+  --dc-accent-primary-hover: #FF8585;
+  --dc-status-success: #69DB7C;
+  --dc-status-warning: #FFA94D;
+  --dc-status-danger: #FF8787;
+  --dc-status-info: #74C0FC;
+
+  --dc-terminal-bg: #1A1715;
+  --dc-terminal-fg: #EDE6D7;
+
+  --dc-shadow-e1: 0 2px 6px rgba(0, 0, 0, 0.30);
+  --dc-shadow-e2: 0 8px 24px rgba(0, 0, 0, 0.40);
+  --dc-shadow-e3: 0 20px 48px rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
+}
+
+/* Minimal reset so panels fill the viewport cleanly. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family:
+    Inter,
+    'Pretendard Variable',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  background: var(--dc-bg-app);
+  color: var(--dc-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

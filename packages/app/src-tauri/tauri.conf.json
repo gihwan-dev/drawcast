@@ -24,6 +24,25 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": []
+    "icon": ["icons/icon.png"],
+    "externalBin": ["binaries/drawcast-mcp"]
+  },
+  "plugins": {
+    "shell": {
+      "sidecar": true,
+      "scope": [
+        {
+          "name": "binaries/drawcast-mcp",
+          "sidecar": true,
+          "args": [
+            "--sse",
+            "--port",
+            { "validator": "^(auto|\\d+)$" },
+            "--session-path",
+            { "validator": ".+" }
+          ]
+        }
+      ]
+    }
   }
 }

@@ -5,6 +5,9 @@ dist-node/
 target/
 src-tauri/target/
 src-tauri/gen/
+# Sidecar binaries are produced by scripts/build-sidecar.mjs per platform.
+# Keep the directory around via .gitkeep but don't commit the blobs.
+src-tauri/binaries/drawcast-mcp-*
 .DS_Store
 *.log
 *.tsbuildinfo
