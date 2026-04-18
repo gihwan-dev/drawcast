@@ -17,6 +17,19 @@
 import type { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { SceneStore } from '../store.js';
+import type { PreviewBus } from '../preview-bus.js';
+
+/**
+ * Non-store dependencies a tool may reach for. Currently only `previewBus`
+ * for the `draw_get_preview` round-trip; future tools (clipboard, etc.)
+ * can extend this bag without changing every tool's signature.
+ *
+ * Every field is optional: stdio-mode servers have no transport hooks,
+ * and tests frequently call `execute` with just a store.
+ */
+export interface ToolDeps {
+  previewBus?: PreviewBus;
+}
 
 /**
  * Shape of the JSON Schema literal each tool exposes through `tools/list`.
@@ -59,6 +72,7 @@ export interface ToolDefinition<I extends z.ZodTypeAny> {
   execute(
     args: z.infer<I>,
     store: SceneStore,
+    deps?: ToolDeps,
   ): Promise<ToolExecutionResult>;
 }
 

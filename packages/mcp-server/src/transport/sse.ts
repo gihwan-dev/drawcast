@@ -21,6 +21,12 @@ import type { AddressInfo } from 'node:net';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import type { Primitive, PrimitiveId, Theme } from '@drawcast/core';
 import type { DrawcastServer } from '../server.js';
+import {
+  createPreviewBus,
+  type PreviewBus,
+  type PreviewResponse,
+} from '../preview-bus.js';
+import { registerTools } from '../tools/index.js';
 
 export interface SSEOptions {
   /** `'auto'` lets the OS pick an ephemeral port. */
@@ -54,6 +60,17 @@ export interface SSEHandle {
    * (e.g. `selection`) without another round of wiring.
    */
   emitEventToClients(kind: string, payload: unknown): void;
+  /**
+   * Number of `/events` subscribers currently attached. Callers use this
+   * to short-circuit when they know nobody is listening (the preview bus
+   * short-circuits `draw_get_preview` on zero subscribers).
+   */
+  eventSubscriberCount(): number;
+  /**
+   * Preview-pipeline bus. Registered with the `draw_get_preview` tool so
+   * it can reach the `/events` stream + `/preview` reverse-channel.
+   */
+  previewBus: PreviewBus;
 }
 
 interface PendingResponse {
@@ -265,9 +282,42 @@ export async function startSSE(
     return respondJSON(res, 404, { error: 'Not found' });
   }
 
+  // Build the preview bus against the hooks above so `draw_get_preview`
+  // can reach into the SSE plumbing without knowing HTTP details. We
+  // re-register tools with this bus as deps so the preview tool sees it
+  // when dispatched through `tools/call`.
+  const previewBus = createPreviewBus({
+    emitEvent: (kind, payload): void => emitToEventClients(kind, payload),
+    awaitResponse: (requestId, timeoutMs): Promise<PreviewResponse> =>
+      awaitResponseImpl<PreviewResponse>(requestId, timeoutMs),
+    hasSubscribers: (): boolean => eventClients.size > 0,
+  });
+  registerTools(server.server, server.store, server.tools, { previewBus });
+
+  function awaitResponseImpl<T>(
+    requestId: string,
+    timeoutMs: number,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pending.delete(requestId);
+        reject(new Error(`awaitResponse timeout for ${requestId}`));
+      }, timeoutMs);
+      timeout.unref?.();
+      pending.set(requestId, {
+        resolve: (value) => {
+          resolve(value as T);
+        },
+        reject,
+        timeout,
+      });
+    });
+  }
+
   const handle: SSEHandle = {
     port,
     url,
+    previewBus,
     async close(): Promise<void> {
       unsubscribe();
       // Reject outstanding waiters so callers don't hang on shutdown.
@@ -295,23 +345,13 @@ export async function startSSE(
       });
     },
     awaitResponse<T>(requestId: string, timeoutMs: number): Promise<T> {
-      return new Promise<T>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          pending.delete(requestId);
-          reject(new Error(`awaitResponse timeout for ${requestId}`));
-        }, timeoutMs);
-        timeout.unref?.();
-        pending.set(requestId, {
-          resolve: (value) => {
-            resolve(value as T);
-          },
-          reject,
-          timeout,
-        });
-      });
+      return awaitResponseImpl<T>(requestId, timeoutMs);
     },
     emitEventToClients(kind: string, payload: unknown): void {
       emitToEventClients(kind, payload);
+    },
+    eventSubscriberCount(): number {
+      return eventClients.size;
     },
   };
 

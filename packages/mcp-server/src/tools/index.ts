@@ -12,7 +12,7 @@ import {
   type CallToolResult,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { SceneStore } from '../store.js';
-import type { ToolDefinition } from './types.js';
+import type { ToolDefinition, ToolDeps } from './types.js';
 import { drawUpsertBox } from './drawUpsertBox.js';
 import { drawUpsertEdge } from './drawUpsertEdge.js';
 import { drawUpsertSticky } from './drawUpsertSticky.js';
@@ -27,6 +27,7 @@ import { drawRemove } from './drawRemove.js';
 import { drawClear } from './drawClear.js';
 import { drawSetTheme } from './drawSetTheme.js';
 import { drawExport } from './drawExport.js';
+import { drawGetPreview } from './drawGetPreview.js';
 
 export { drawUpsertBox } from './drawUpsertBox.js';
 export { drawUpsertEdge } from './drawUpsertEdge.js';
@@ -42,9 +43,11 @@ export { drawRemove } from './drawRemove.js';
 export { drawClear } from './drawClear.js';
 export { drawSetTheme } from './drawSetTheme.js';
 export { drawExport } from './drawExport.js';
+export { drawGetPreview } from './drawGetPreview.js';
 export { defineTool } from './types.js';
 export type {
   ToolDefinition,
+  ToolDeps,
   ToolExecutionResult,
   ToolInputJsonSchema,
 } from './types.js';
@@ -52,8 +55,8 @@ export type {
 /**
  * Canonical list of tools shipped with the MCP server — the full 15-tool
  * surface. PR #9 seeded this with the three upsert primitives; PR #10
- * completes it with the structural / coverage / query / mutation / theme /
- * export tools.
+ * completed the structural / query / mutation / theme / export tools; PR
+ * #18 adds `draw_get_preview` for the preview pipeline.
  */
 export const coreTools: readonly ToolDefinition<z.ZodTypeAny>[] = [
   drawUpsertBox,
@@ -70,17 +73,23 @@ export const coreTools: readonly ToolDefinition<z.ZodTypeAny>[] = [
   drawClear,
   drawSetTheme,
   drawExport,
+  drawGetPreview,
 ];
 
 /**
  * Install `tools/list` and `tools/call` handlers for the provided tool set
  * on a server instance. Replaces any previously installed handler of the
  * same method — calling this more than once is safe.
+ *
+ * The optional `deps` bag threads transport-level capabilities (like the
+ * preview-bus) into each tool's `execute` call. Tools that don't need them
+ * (everything except `draw_get_preview` today) ignore the argument.
  */
 export function registerTools(
   server: Server,
   store: SceneStore,
   tools: readonly ToolDefinition<z.ZodTypeAny>[],
+  deps?: ToolDeps,
 ): void {
   const byName = new Map<string, ToolDefinition<z.ZodTypeAny>>();
   for (const tool of tools) {
@@ -114,7 +123,7 @@ export function registerTools(
       // The tool's own `execute` handles zod validation + SceneLockError;
       // we just forward the raw args so it can build a single, uniform
       // error response.
-      const result = await tool.execute(args, store);
+      const result = await tool.execute(args, store, deps);
       return {
         content: result.content,
         ...(result.isError !== undefined && { isError: result.isError }),

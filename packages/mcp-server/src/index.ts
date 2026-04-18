@@ -26,8 +26,14 @@ export {
   ScenePersistence,
   type PersistenceOptions,
 } from './persistence.js';
+export {
+  createPreviewBus,
+  type PreviewBus,
+  type PreviewResponse,
+} from './preview-bus.js';
 
-// Tool exports (PR #9 + PR #10 — full 14-tool surface).
+// Tool exports (PR #9 + PR #10 — 14-tool surface; PR #18 extends to 15 by
+// adding `draw_get_preview`).
 export {
   coreTools,
   registerTools,
@@ -46,7 +52,9 @@ export {
   drawClear,
   drawSetTheme,
   drawExport,
+  drawGetPreview,
   type ToolDefinition,
+  type ToolDeps,
   type ToolExecutionResult,
   type ToolInputJsonSchema,
 } from './tools/index.js';

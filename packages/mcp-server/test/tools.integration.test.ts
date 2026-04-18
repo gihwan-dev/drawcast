@@ -24,16 +24,16 @@ async function connectPair() {
 }
 
 describe('core tools registration', () => {
-  it('coreTools exposes the full 14-tool surface', () => {
-    // Note: the PR-10 plan phrases this as "15-tool surface"; the literal
-    // coreTools list in the spec is 14 (preview + clipboard are deferred to
-    // PR #18 / #19). Assert the 14-name snapshot so any accidental drop or
-    // dup is caught.
-    expect(coreTools).toHaveLength(14);
+  it('coreTools exposes the full 15-tool surface', () => {
+    // PR #18 added `draw_get_preview`, bumping the surface to 15. Clipboard
+    // copy/paste lands in PR #19. The inline snapshot guards against
+    // accidental drops / dupes as more tools land.
+    expect(coreTools).toHaveLength(15);
     expect(coreTools.map((t) => t.name).sort()).toMatchInlineSnapshot(`
       [
         "draw_clear",
         "draw_export",
+        "draw_get_preview",
         "draw_get_primitive",
         "draw_get_scene",
         "draw_get_selection",

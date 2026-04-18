@@ -13,6 +13,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SceneStore } from './store.js';
 import { coreTools, registerTools } from './tools/index.js';
 import type { ToolDefinition } from './tools/types.js';
+import type { PreviewBus } from './preview-bus.js';
 
 export interface CreateServerOptions {
   name?: string;
@@ -28,6 +29,12 @@ export interface CreateServerOptions {
    * Primarily a test seam.
    */
   tools?: readonly ToolDefinition<z.ZodTypeAny>[];
+  /**
+   * Bus that lets tools (currently only `draw_get_preview`) talk back to
+   * the SSE transport for request/response round-trips. Omit in stdio
+   * mode — tools that need it will fail with an informative error.
+   */
+  previewBus?: PreviewBus;
 }
 
 export interface DrawcastServer {
@@ -54,7 +61,11 @@ export function createServer(options: CreateServerOptions = {}): DrawcastServer 
     },
   );
 
-  registerTools(server, store, tools);
+  const deps =
+    options.previewBus !== undefined
+      ? { previewBus: options.previewBus }
+      : undefined;
+  registerTools(server, store, tools, deps);
 
   return { server, store, tools };
 }

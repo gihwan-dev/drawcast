@@ -97,6 +97,92 @@ describe('reverse-channel endpoints', () => {
   });
 });
 
+describe('preview pipeline', () => {
+  it('resolves the await promise when the app POSTs /preview', async () => {
+    const { handle } = await boot();
+
+    // Subscribe to /events so the preview bus sees a live client. We just
+    // need the socket open — we don't actually need to consume the frames
+    // for this test since we're driving the resolver directly.
+    const esRes = await fetch(`${handle.url}/events`, {
+      headers: { Accept: 'text/event-stream' },
+    });
+    expect(esRes.status).toBe(200);
+    const reader = esRes.body?.getReader();
+    expect(reader).toBeDefined();
+
+    const requestId = 'req-abc';
+    const pending = handle.previewBus.awaitResponse(requestId, 2000);
+
+    // Mimic the app: POST /preview with the requestId + base64 payload.
+    const post = await fetch(`${handle.url}/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requestId,
+        data: 'ZmFrZQ==',
+        mimeType: 'image/png',
+      }),
+    });
+    expect(post.status).toBe(200);
+
+    const response = (await pending) as { data: string; mimeType: string };
+    expect(response.data).toBe('ZmFrZQ==');
+    expect(response.mimeType).toBe('image/png');
+
+    await reader?.cancel();
+  });
+
+  it('emits a requestPreview event to every /events subscriber', async () => {
+    const { handle } = await boot();
+
+    async function readUntil(
+      reader: ReadableStreamDefaultReader<Uint8Array>,
+      needle: string,
+      deadline: number,
+    ): Promise<string> {
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (Date.now() < deadline) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buf += decoder.decode(chunk.value, { stream: true });
+        if (buf.includes(needle)) return buf;
+      }
+      return buf;
+    }
+
+    const [subA, subB] = await Promise.all([
+      fetch(`${handle.url}/events`, {
+        headers: { Accept: 'text/event-stream' },
+      }),
+      fetch(`${handle.url}/events`, {
+        headers: { Accept: 'text/event-stream' },
+      }),
+    ]);
+    const readerA = subA.body!.getReader();
+    const readerB = subB.body!.getReader();
+
+    // Give the server a moment to register both subscribers.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(handle.eventSubscriberCount()).toBe(2);
+
+    handle.previewBus.emitRequest('req-xyz', 'png', 2);
+
+    const deadline = Date.now() + 500;
+    const [bufA, bufB] = await Promise.all([
+      readUntil(readerA, 'event: requestPreview', deadline),
+      readUntil(readerB, 'event: requestPreview', deadline),
+    ]);
+    expect(bufA).toContain('event: requestPreview');
+    expect(bufA).toContain('"requestId":"req-xyz"');
+    expect(bufB).toContain('event: requestPreview');
+
+    await readerA.cancel();
+    await readerB.cancel();
+  });
+});
+
 describe('GET /events', () => {
   it('delivers an initial scene snapshot on connect', async () => {
     const { drawcast, handle } = await boot();
