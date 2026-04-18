@@ -33,6 +33,7 @@ import {
 import { useCanvasStore } from '../store/canvasStore.js';
 import { useSceneStore } from '../store/sceneStore.js';
 import { useToastStore } from '../store/toastStore.js';
+import { ResetEditsButton } from './ResetEditsButton.js';
 
 type ActionKind = 'png' | 'excalidraw' | 'export';
 
@@ -140,6 +141,7 @@ export function CanvasToolbar(): JSX.Element {
         onClick={() => handleExport('excalidraw')}
         icon={<Download size={16} strokeWidth={1.75} />}
       />
+      <ResetEditsButton />
     </div>
   );
 }

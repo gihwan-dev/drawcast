@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import type { Group, PrimitiveId } from '@drawcast/core';
 import { SceneLockError } from '../store.js';
+import { lockErrorMessage } from './errors.js';
 import { defineTool, type ToolExecutionResult } from './types.js';
 import { formatZodError } from './utils.js';
 
@@ -73,7 +74,7 @@ export const drawUpsertGroup = defineTool({
           content: [
             {
               type: 'text',
-              text: `${err.message} Call unlock before retrying.`,
+              text: lockErrorMessage(err.primitiveId),
             },
           ],
         };

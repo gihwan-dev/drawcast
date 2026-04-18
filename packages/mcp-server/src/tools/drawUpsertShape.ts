@@ -14,6 +14,7 @@
 import { z } from 'zod';
 import type { Embed, Freedraw, Image, Line } from '@drawcast/core';
 import { SceneLockError } from '../store.js';
+import { lockErrorMessage } from './errors.js';
 import { defineTool, type ToolExecutionResult } from './types.js';
 import {
   POINT_JSON_SCHEMA,
@@ -148,7 +149,7 @@ export const drawUpsertShape = defineTool({
           content: [
             {
               type: 'text',
-              text: `${err.message} Call unlock before retrying.`,
+              text: lockErrorMessage(err.primitiveId),
             },
           ],
         };

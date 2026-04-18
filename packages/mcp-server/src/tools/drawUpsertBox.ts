@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import type { LabelBox, PrimitiveId } from '@drawcast/core';
 import { SceneLockError } from '../store.js';
+import { lockErrorMessage } from './errors.js';
 import { defineTool, type ToolExecutionResult } from './types.js';
 import {
   FontFamilySchema,
@@ -155,7 +156,7 @@ export const drawUpsertBox = defineTool({
           content: [
             {
               type: 'text',
-              text: `${err.message} Call unlock before retrying.`,
+              text: lockErrorMessage(err.primitiveId),
             },
           ],
         };

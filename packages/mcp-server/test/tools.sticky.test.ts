@@ -69,7 +69,7 @@ describe('draw_upsert_sticky', () => {
     expect(store.getAllPrimitives()).toHaveLength(0);
   });
 
-  it('returns isError with unlock hint when the id is locked', async () => {
+  it('returns isError with Reset edits hint when the id is locked', async () => {
     const store = new SceneStore();
     store.lock([asId('s')]);
     const result = await drawUpsertSticky.execute(
@@ -78,6 +78,6 @@ describe('draw_upsert_sticky', () => {
     );
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toMatch(/locked/i);
-    expect(result.content[0]?.text).toMatch(/unlock/i);
+    expect(result.content[0]?.text).toContain('Reset edits');
   });
 });

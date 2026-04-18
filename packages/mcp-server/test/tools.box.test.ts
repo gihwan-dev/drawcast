@@ -93,7 +93,7 @@ describe('draw_upsert_box', () => {
     expect(stored.style).toEqual({ strokeColor: '#ff0000', roughness: 2 });
   });
 
-  it('returns isError with unlock hint when the id is locked', async () => {
+  it('returns isError with Reset edits hint when the id is locked', async () => {
     const store = new SceneStore();
     store.lock([asId('a')]);
     const result = await drawUpsertBox.execute(
@@ -101,7 +101,11 @@ describe('draw_upsert_box', () => {
       store,
     );
     expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toMatch(/locked/i);
-    expect(result.content[0]?.text).toMatch(/unlock/i);
+    const text = result.content[0]?.text ?? '';
+    expect(text).toMatch(/locked/i);
+    // Points the CLI/user at the UI affordance that clears locks.
+    expect(text).toContain('Reset edits');
+    // Identifies which primitive is at fault.
+    expect(text).toContain('a');
   });
 });
