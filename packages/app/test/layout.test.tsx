@@ -26,11 +26,14 @@ describe('App layout', () => {
     expect(screen.getByText('Drawcast')).toBeInTheDocument();
   });
 
-  it('shows the splitter separator and both placeholder panels', () => {
+  it('shows the splitter separator, the terminal placeholder, and the canvas panel', () => {
     render(<App />);
     expect(screen.getByTestId('dc-splitter')).toBeInTheDocument();
     expect(screen.getByText('Terminal')).toBeInTheDocument();
-    expect(screen.getByText('Canvas')).toBeInTheDocument();
+    // PR #13 replaced the CanvasPlaceholder with the real panel, so the
+    // test now asserts on the panel container and the mocked Excalidraw.
+    expect(screen.getByTestId('dc-canvas-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('excalidraw-mock')).toBeInTheDocument();
   });
 
   it('shows "Starting…" while the sidecar has no port, and "MCP :43017" when ready', () => {

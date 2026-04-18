@@ -26,3 +26,8 @@ vi.mock('@tauri-apps/api/event', () => ({
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async () => null),
 }));
+
+// @excalidraw/excalidraw requires Path2D and a live CSS pipeline, neither
+// of which jsdom ships. Every test mounts its own lightweight stand-in —
+// see `test/mocks/excalidraw.tsx`.
+vi.mock('@excalidraw/excalidraw', () => import('./mocks/excalidraw.js'));
