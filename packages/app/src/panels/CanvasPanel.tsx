@@ -33,6 +33,7 @@ import { compile } from '@drawcast/core';
 import type { CompileResult } from '@drawcast/core';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types';
 import { writeToActiveTerminal } from './TerminalPanel.js';
+import { CanvasToolbar } from '../components/CanvasToolbar.js';
 import { useSceneStore } from '../store/sceneStore.js';
 import { useSettingsStore } from '../store/settingsStore.js';
 import { useCanvasStore } from '../store/canvasStore.js';
@@ -409,6 +410,7 @@ export function CanvasPanel(): JSX.Element {
           appState: { viewBackgroundColor: '#ffffff' },
         }}
       />
+      <CanvasToolbar />
       {chipLabel !== null && (
         <div
           data-testid="dc-selection-chip"

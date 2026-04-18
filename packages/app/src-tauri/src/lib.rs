@@ -4,11 +4,14 @@
 //! - The MCP sidecar supervisor (PR #12).
 //! - The CLI host + auto-registration for Claude Code / Codex (PR #14).
 //! - Session management: create / list / switch (PR #15).
+//! - Clipboard + file export sinks for the canvas toolbar (PR #19).
 //!
 //! Exposes Tauri commands that the frontend uses to spawn and interact with
 //! those subprocesses.
+mod clipboard;
 mod cli_host;
 mod cli_register;
+mod files;
 mod session;
 mod sidecar;
 mod uploads;
@@ -48,6 +51,9 @@ pub fn run() {
             save_upload,
             save_preview_bytes,
             read_file_bytes,
+            clipboard_write_png,
+            clipboard_write_text,
+            save_export_bytes,
         ])
         .setup(|app| {
             // Bootstrap the default session directory + metadata, then spawn
@@ -172,6 +178,38 @@ async fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
         return Err(format!("not a file: {}", path.display()));
     }
     std::fs::read(&path).map_err(|e| e.to_string())
+}
+
+/// Decode and put PNG bytes on the system clipboard. Frontend sends the raw
+/// PNG bytes (produced by `exportToBlob`) and the Rust side converts to the
+/// RGBA buffer arboard expects. Errors are surfaced as plain strings so the
+/// frontend toast can show them verbatim — useful when `arboard::Clipboard::new`
+/// fails on a headless Linux CI box without an X11/Wayland session.
+#[tauri::command]
+async fn clipboard_write_png(data: Vec<u8>) -> Result<(), String> {
+    clipboard::write_png(&data).map_err(|e| e.to_string())
+}
+
+/// Put plain text on the system clipboard. Used for the "Copy as Excalidraw"
+/// path — Excalidraw web and the Obsidian plugin both detect the JSON
+/// envelope on paste, so a single text flavor is enough for the MVP.
+#[tauri::command]
+async fn clipboard_write_text(text: String) -> Result<(), String> {
+    clipboard::write_text(&text).map_err(|e| e.to_string())
+}
+
+/// Write a serialized scene envelope (`.excalidraw` JSON or
+/// `.excalidraw.md` markdown) to a user-chosen path. The frontend already
+/// picked the destination via Tauri's dialog plugin; this command is a
+/// thin sink so we don't have to pull in the full fs plugin.
+#[tauri::command]
+async fn save_export_bytes(path: String, data: Vec<u8>) -> Result<String, String> {
+    if path.is_empty() {
+        return Err("export path must not be empty".to_string());
+    }
+    let target = PathBuf::from(&path);
+    files::write_file(&target, &data).map_err(|e| e.to_string())?;
+    Ok(target.to_string_lossy().to_string())
 }
 
 #[tauri::command]
