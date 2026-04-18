@@ -3,10 +3,13 @@
 // `bun build --compile` and drop it under
 // `packages/app/src-tauri/binaries/drawcast-mcp-<triple><ext>`.
 //
-// Only builds for the CURRENT host platform. CI handles the cross-platform
-// matrix in PR #21.
+// Default: build for the CURRENT host platform.
+// `--target <triple>` (PR #21): build for an explicit Tauri triple so CI can
+// cross-compile each matrix leg without relying on the runner's auto-detect.
 //
-// Usage: `node scripts/build-sidecar.mjs` (invoked via `pnpm build:sidecar`).
+// Usage:
+//   node scripts/build-sidecar.mjs
+//   node scripts/build-sidecar.mjs --target aarch64-apple-darwin
 
 import { spawn } from 'node:child_process';
 import { mkdir, access } from 'node:fs/promises';
@@ -46,9 +49,35 @@ const TARGETS = {
   },
 };
 
+// Reverse index from Tauri triple → target record, so `--target` can request
+// a specific triple without the caller having to know the bun-target name.
+const BY_TRIPLE = Object.fromEntries(
+  Object.values(TARGETS).map((t) => [t.triple, t]),
+);
+
 function die(msg, code = 1) {
   process.stderr.write(`${msg}\n`);
   process.exit(code);
+}
+
+function parseArgs(argv) {
+  const out = { target: null };
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--target') {
+      out.target = argv[i + 1];
+      i += 1;
+    } else if (arg?.startsWith('--target=')) {
+      out.target = arg.slice('--target='.length);
+    } else if (arg === '--help' || arg === '-h') {
+      process.stdout.write(
+        'Usage: build-sidecar.mjs [--target <triple>]\n' +
+          `Supported triples: ${Object.keys(BY_TRIPLE).join(', ')}\n`,
+      );
+      process.exit(0);
+    }
+  }
+  return out;
 }
 
 async function hasBun() {
@@ -70,14 +99,30 @@ function run(cmd, args, opts = {}) {
   });
 }
 
-async function main() {
+function resolveTarget(explicit) {
+  if (explicit) {
+    const hit = BY_TRIPLE[explicit];
+    if (!hit) {
+      die(
+        `Unknown target triple: ${explicit}. ` +
+          `Supported: ${Object.keys(BY_TRIPLE).join(', ')}`,
+      );
+    }
+    return hit;
+  }
   const key = `${process.platform}:${process.arch}`;
-  const target = TARGETS[key];
-  if (!target) {
+  const hit = TARGETS[key];
+  if (!hit) {
     die(
       `Unsupported platform: ${key}. Supported: ${Object.keys(TARGETS).join(', ')}`,
     );
   }
+  return hit;
+}
+
+async function main() {
+  const { target: explicit } = parseArgs(process.argv.slice(2));
+  const target = resolveTarget(explicit);
 
   if (!(await hasBun())) {
     die(

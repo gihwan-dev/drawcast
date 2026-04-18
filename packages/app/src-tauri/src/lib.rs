@@ -20,6 +20,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
+use tauri_plugin_updater::UpdaterExt;
 
 use crate::cli_host::{CliHost, CliKind, ManagedCliHost};
 use crate::cli_register::{
@@ -36,6 +37,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_sidecar_port,
             get_default_session_path,
@@ -54,6 +56,7 @@ pub fn run() {
             clipboard_write_png,
             clipboard_write_text,
             save_export_bytes,
+            check_for_updates,
         ])
         .setup(|app| {
             // Bootstrap the default session directory + metadata, then spawn
@@ -463,5 +466,38 @@ fn target_triple() -> &'static str {
     )))]
     {
         "unknown"
+    }
+}
+
+/// Shape returned to the frontend's `checkForUpdates()` wrapper.
+/// `hasUpdate` is true iff the updater plugin resolved an entry whose
+/// semver is newer than `tauri.conf.json` → `version`. When true, the
+/// optional `version` field carries the remote's version string so the
+/// UI can render a banner like "Drawcast 0.2.0 available".
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateStatus {
+    has_update: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+}
+
+/// Check for a pending update via the `tauri-plugin-updater`. Does NOT
+/// download — the frontend calls `downloadAndInstall()` separately so
+/// the user can see a confirmation UI first. Errors surface as plain
+/// strings so the JS side can toast them.
+#[tauri::command]
+async fn check_for_updates(app: tauri::AppHandle) -> Result<UpdateStatus, String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    match updater.check().await {
+        Ok(Some(update)) => Ok(UpdateStatus {
+            has_update: true,
+            version: Some(update.version.clone()),
+        }),
+        Ok(None) => Ok(UpdateStatus {
+            has_update: false,
+            version: None,
+        }),
+        Err(err) => Err(err.to_string()),
     }
 }

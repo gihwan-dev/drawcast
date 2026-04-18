@@ -1,0 +1,128 @@
+name: release
+
+# Tag-driven release matrix for Drawcast (PR #21, Phase 6.1).
+# Each matrix leg bundles its own platform — the mcp-server sidecar is
+# cross-compiled via `bun build --compile` (scripts/build-sidecar.mjs
+# --target <triple>`), then Tauri bundles `.dmg` / `.msi` / `.AppImage`.
+# On a `v*` tag push the final `release` job attaches artifacts to a
+# generated GitHub Release; `workflow_dispatch` lets maintainers dry-run
+# the matrix without cutting a tag.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    name: bundle-${{ matrix.triple }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            triple: aarch64-apple-darwin
+          - os: macos-13
+            triple: x86_64-apple-darwin
+          - os: ubuntu-22.04
+            triple: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/app/src-tauri/target
+          key: cargo-${{ runner.os }}-${{ matrix.triple }}-${{ hashFiles('packages/app/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ matrix.triple }}-
+
+      - name: Install system deps (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build mcp-server (TS -> dist/)
+        run: pnpm --filter @drawcast/mcp-server build
+
+      - name: Build sidecar binary for matrix triple
+        run: node packages/app/scripts/build-sidecar.mjs --target ${{ matrix.triple }}
+
+      - name: Build Vite frontend
+        run: pnpm --filter @drawcast/app build:vite
+
+      - name: Tauri bundle
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm --filter @drawcast/app exec tauri build --target ${{ matrix.triple }}
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: drawcast-${{ matrix.triple }}
+          if-no-files-found: warn
+          path: |
+            packages/app/src-tauri/target/${{ matrix.triple }}/release/bundle/**/*.dmg
+            packages/app/src-tauri/target/${{ matrix.triple }}/release/bundle/**/*.msi
+            packages/app/src-tauri/target/${{ matrix.triple }}/release/bundle/**/*.AppImage
+            packages/app/src-tauri/target/${{ matrix.triple }}/release/bundle/**/*.app.tar.gz
+            packages/app/src-tauri/target/${{ matrix.triple }}/release/bundle/**/*.app.tar.gz.sig
+            packages/app/src-tauri/target/${{ matrix.triple }}/release/bundle/**/*.AppImage.sig
+            packages/app/src-tauri/target/${{ matrix.triple }}/release/bundle/**/*.msi.sig
+            packages/app/src-tauri/target/${{ matrix.triple }}/release/bundle/**/*.nsis.sig
+            packages/app/src-tauri/target/${{ matrix.triple }}/release/bundle/**/*.dmg.sig
+
+  release:
+    name: publish
+    needs: bundle
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true

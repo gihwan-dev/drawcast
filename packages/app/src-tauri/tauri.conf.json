@@ -43,6 +43,14 @@
           ]
         }
       ]
+    },
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/<OWNER>/drawcast/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": "<FILL IN PUBLIC KEY AT RELEASE TIME>"
     }
   }
 }
