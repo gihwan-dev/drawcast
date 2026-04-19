@@ -1,16 +1,18 @@
 //! Tauri app shell entrypoint for Drawcast.
 //!
 //! Wires:
-//! - The MCP sidecar supervisor (PR #12).
-//! - The CLI host + auto-registration for Claude Code / Codex (PR #14).
-//! - Session management: create / list / switch (PR #15).
-//! - Clipboard + file export sinks for the canvas toolbar (PR #19).
+//! - The MCP sidecar supervisor.
+//! - Session management: create / list / switch.
+//! - Clipboard + file export sinks for the canvas toolbar.
+//! - The `chat_host` supervisor — long-running `claude -p` child that
+//!   drives the Chat panel over stream-json NDJSON.
 //!
-//! Exposes Tauri commands that the frontend uses to spawn and interact with
-//! those subprocesses.
+//! The previous xterm/CLI-host and Codex-registration paths were removed
+//! in favour of the chat pipeline. User auth is the `claude` CLI's own
+//! OAuth session (Pro/Max subscription); Drawcast never handles API
+//! keys.
+mod chat_host;
 mod clipboard;
-mod cli_host;
-mod cli_register;
 mod files;
 mod session;
 mod sidecar;
@@ -22,10 +24,7 @@ use std::sync::Mutex;
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_updater::UpdaterExt;
 
-use crate::cli_host::{CliHost, CliKind, ManagedCliHost};
-use crate::cli_register::{
-    register_claude, register_codex, RegistrationStatus,
-};
+use crate::chat_host::{ChatHost, ManagedChatHost};
 use crate::session::SessionMeta;
 use crate::sidecar::{get_sidecar_port, ManagedSidecar, McpSidecar};
 
@@ -41,11 +40,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_sidecar_port,
             get_default_session_path,
-            spawn_cli,
-            cli_stdin,
-            cli_resize,
-            cli_shutdown,
-            register_cli,
+            chat_send,
+            chat_cancel,
+            chat_shutdown,
+            check_claude_installed,
             create_session,
             list_sessions,
             switch_session,
@@ -57,31 +55,29 @@ pub fn run() {
             clipboard_write_text,
             save_export_bytes,
             check_for_updates,
-            check_cli_installed,
         ])
         .setup(|app| {
             // Bootstrap the default session directory + metadata, then spawn
-            // the sidecar pointing at it. If the user previously created
-            // named sessions those continue to live alongside `default`.
+            // the sidecar pointing at it. Named sessions the user created
+            // before continue to live alongside `default`.
             let session_path = session::default_session_path()?;
-            let meta = session::load_meta(&session_path)
-                .unwrap_or_else(|_| {
-                    // default_session_path() guarantees meta exists, but if
-                    // the file was corrupted we fall back to a synthetic stub
-                    // rather than crashing at boot.
-                    SessionMeta {
-                        id: "default".to_string(),
-                        name: "Default".to_string(),
-                        created_at: 0,
-                        updated_at: 0,
-                        cli_choice: None,
-                        theme: "sketchy".to_string(),
-                        last_known_port: None,
-                    }
-                });
+            let meta = session::load_meta(&session_path).unwrap_or_else(|_| {
+                // default_session_path() guarantees meta exists, but if
+                // the file was corrupted we fall back to a synthetic stub
+                // rather than crashing at boot.
+                SessionMeta {
+                    id: "default".to_string(),
+                    name: "Default".to_string(),
+                    created_at: 0,
+                    updated_at: 0,
+                    cli_choice: None,
+                    theme: "sketchy".to_string(),
+                    last_known_port: None,
+                }
+            });
             let sidecar = McpSidecar::spawn(&app.handle(), session_path)?;
             app.manage::<ManagedSidecar>(Mutex::new(Some(sidecar)));
-            app.manage::<ManagedCliHost>(tokio::sync::Mutex::new(None));
+            app.manage::<ManagedChatHost>(tokio::sync::Mutex::new(None));
             app.manage::<ManagedSession>(Mutex::new(Some(meta)));
             Ok(())
         })
@@ -109,10 +105,10 @@ pub fn run() {
                 let _ = tauri::async_runtime::block_on(async move { sidecar.shutdown().await });
             }
 
-            // Tear down any running CLI host as well.
-            let cli_state: tauri::State<'_, ManagedCliHost> = app_handle.state();
+            // Tear down the chat child (if any) alongside.
+            let chat_state: tauri::State<'_, ManagedChatHost> = app_handle.state();
             let _ = tauri::async_runtime::block_on(async move {
-                let mut guard = cli_state.lock().await;
+                let mut guard = chat_state.lock().await;
                 if let Some(host) = guard.take() {
                     let _ = host.shutdown().await;
                 }
@@ -186,9 +182,7 @@ async fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
 
 /// Decode and put PNG bytes on the system clipboard. Frontend sends the raw
 /// PNG bytes (produced by `exportToBlob`) and the Rust side converts to the
-/// RGBA buffer arboard expects. Errors are surfaced as plain strings so the
-/// frontend toast can show them verbatim — useful when `arboard::Clipboard::new`
-/// fails on a headless Linux CI box without an X11/Wayland session.
+/// RGBA buffer arboard expects.
 #[tauri::command]
 async fn clipboard_write_png(data: Vec<u8>) -> Result<(), String> {
     clipboard::write_png(&data).map_err(|e| e.to_string())
@@ -216,65 +210,45 @@ async fn save_export_bytes(path: String, data: Vec<u8>) -> Result<String, String
     Ok(target.to_string_lossy().to_string())
 }
 
+/// Send a user message to the chat. Lazily spawns the `claude` child on
+/// first call (or after a cancel/shutdown). `content` is the `content`
+/// array of an Anthropic user message — the Rust side wraps it into the
+/// full stream-json envelope before writing to the child's stdin.
 #[tauri::command]
-async fn spawn_cli(
+async fn chat_send(
     app: tauri::AppHandle,
-    which: String,
-    session_path: String,
+    content: serde_json::Value,
 ) -> Result<(), String> {
-    let kind = CliKind::from_str(&which).map_err(|e| e.to_string())?;
-    let path = PathBuf::from(&session_path);
-    if !path.is_dir() {
-        return Err(format!(
-            "session path does not exist: {}",
-            path.display()
-        ));
+    if !content.is_array() {
+        return Err("content must be a JSON array of Anthropic content blocks".to_string());
     }
 
-    // Tear down any existing host first so we don't leak processes.
-    let state: tauri::State<'_, ManagedCliHost> = app.state();
-    {
-        let mut guard = state.lock().await;
-        if let Some(existing) = guard.take() {
-            let _ = existing.shutdown().await;
+    ensure_chat_running(&app).await?;
+
+    let envelope = serde_json::json!({
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": content,
         }
-    }
+    });
+    let line = serde_json::to_string(&envelope).map_err(|e| e.to_string())?;
 
-    let host = CliHost::spawn(&app, kind, path).map_err(|e| e.to_string())?;
-    {
-        let mut guard = state.lock().await;
-        *guard = Some(host);
-    }
-    Ok(())
-}
-
-#[tauri::command]
-async fn cli_stdin(app: tauri::AppHandle, data: String) -> Result<(), String> {
-    let state: tauri::State<'_, ManagedCliHost> = app.state();
+    let state: tauri::State<'_, ManagedChatHost> = app.state();
     let guard = state.lock().await;
     let host = guard
         .as_ref()
-        .ok_or_else(|| "no CLI is running".to_string())?;
-    host.write_stdin(&data).await.map_err(|e| e.to_string())
+        .ok_or_else(|| "chat host is not running".to_string())?;
+    host.write_line(&line).await.map_err(|e| e.to_string())
 }
 
+/// Cancel the in-flight turn by killing the chat child. Next `chat_send`
+/// will respawn. Note: this loses the claude-side session id — we don't
+/// pass `--resume` yet, so a cancel currently resets conversation memory.
+/// Multi-turn resume is a follow-up.
 #[tauri::command]
-async fn cli_resize(
-    app: tauri::AppHandle,
-    cols: u16,
-    rows: u16,
-) -> Result<(), String> {
-    let state: tauri::State<'_, ManagedCliHost> = app.state();
-    let guard = state.lock().await;
-    let host = guard
-        .as_ref()
-        .ok_or_else(|| "no CLI is running".to_string())?;
-    host.resize(cols, rows).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn cli_shutdown(app: tauri::AppHandle) -> Result<(), String> {
-    let state: tauri::State<'_, ManagedCliHost> = app.state();
+async fn chat_cancel(app: tauri::AppHandle) -> Result<(), String> {
+    let state: tauri::State<'_, ManagedChatHost> = app.state();
     let mut guard = state.lock().await;
     if let Some(host) = guard.take() {
         host.shutdown().await.map_err(|e| e.to_string())?;
@@ -282,30 +256,24 @@ async fn cli_shutdown(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Welcome / onboarding probe: reports whether a given CLI is installed in
-/// a location the app knows how to spawn from. Reuses
-/// `cli_host::resolve_binary` so detection and spawn stay in lock-step —
-/// if this returns `true` the Connect CTA can enable, and `spawn_cli`
-/// will find the same binary.
+/// Graceful chat shutdown. Semantically identical to `chat_cancel` today
+/// but kept separate so we can later diverge (e.g. persist session id on
+/// shutdown without persisting on cancel).
 #[tauri::command]
-fn check_cli_installed(which: String) -> Result<bool, String> {
-    let kind = CliKind::from_str(&which).map_err(|e| e.to_string())?;
-    Ok(cli_host::resolve_binary(kind).is_ok())
+async fn chat_shutdown(app: tauri::AppHandle) -> Result<(), String> {
+    let state: tauri::State<'_, ManagedChatHost> = app.state();
+    let mut guard = state.lock().await;
+    if let Some(host) = guard.take() {
+        host.shutdown().await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
+/// Onboarding probe — Welcome enables "Get started" iff this returns true.
+/// Shares `chat_host::resolve_claude_binary` so detection and spawn agree.
 #[tauri::command]
-async fn register_cli(app: tauri::AppHandle, which: String) -> Result<String, String> {
-    let sidecar_bin = resolve_sidecar_path(&app).map_err(|e| e.to_string())?;
-    let status: RegistrationStatus = match which.as_str() {
-        "claude-code" | "claude" => register_claude(&sidecar_bin)
-            .await
-            .map_err(|e| e.to_string())?,
-        "codex" => register_codex(&sidecar_bin)
-            .await
-            .map_err(|e| e.to_string())?,
-        other => return Err(format!("unknown CLI kind: {other}")),
-    };
-    Ok(status.as_str().to_string())
+fn check_claude_installed() -> bool {
+    chat_host::is_claude_installed()
 }
 
 #[tauri::command]
@@ -323,21 +291,25 @@ fn list_sessions() -> Result<Vec<SessionMeta>, String> {
 }
 
 #[tauri::command]
-fn get_current_session(state: tauri::State<'_, ManagedSession>) -> Result<Option<SessionMeta>, String> {
+fn get_current_session(
+    state: tauri::State<'_, ManagedSession>,
+) -> Result<Option<SessionMeta>, String> {
     let guard = state.lock().map_err(|e| e.to_string())?;
     Ok(guard.clone())
 }
 
 /// Orchestrated session switch:
-///   1. Stop any running CLI host.
-///   2. Shut down the current sidecar.
+///   1. Shut down the current chat child (keeps conversation isolated per
+///      session).
+///   2. Shut down the current MCP sidecar.
 ///   3. Respawn the sidecar pointing at the new session dir.
 ///   4. Update the managed `current session` slot.
 ///   5. Emit `session-switched { meta }` so the frontend can reset state.
 ///
-/// The sidecar negotiates a fresh port on respawn; the existing `sidecar-port`
-/// + `sidecar-ready` event flow on the frontend picks up the new port and
-/// reconnects the MCP SSE client automatically.
+/// The sidecar negotiates a fresh port on respawn; the existing
+/// `sidecar-port` + `sidecar-ready` event flow on the frontend picks up
+/// the new port. The next chat message lazily respawns the `claude`
+/// child against the new cwd + port.
 #[tauri::command]
 async fn switch_session(app: tauri::AppHandle, id: String) -> Result<SessionMeta, String> {
     let new_path = session::session_path_for(&id).map_err(|e| e.to_string())?;
@@ -349,10 +321,11 @@ async fn switch_session(app: tauri::AppHandle, id: String) -> Result<SessionMeta
     }
     let meta = session::load_meta(&new_path).map_err(|e| e.to_string())?;
 
-    // 1. Shut down any running CLI host so it doesn't keep a stale cwd.
+    // 1. Shut down any running chat child so it doesn't keep a stale cwd
+    //    or blend conversations across sessions.
     {
-        let cli_state: tauri::State<'_, ManagedCliHost> = app.state();
-        let mut guard = cli_state.lock().await;
+        let chat_state: tauri::State<'_, ManagedChatHost> = app.state();
+        let mut guard = chat_state.lock().await;
         if let Some(host) = guard.take() {
             let _ = host.shutdown().await;
         }
@@ -394,91 +367,64 @@ async fn switch_session(app: tauri::AppHandle, id: String) -> Result<SessionMeta
         *guard = Some(meta.clone());
     }
 
-    // 5. Let the frontend know so it can clear sceneStore, etc.
+    // 5. Let the frontend know so it can clear sceneStore + chat history.
     let _ = app.emit("session-switched", &meta);
 
     Ok(meta)
 }
 
-/// Resolve the drawcast-mcp sidecar path. Tauri bundles the sidecar next to
-/// the app binary with a target triple suffix (e.g. `drawcast-mcp-aarch64-
-/// apple-darwin`). We first check that file, then the generic name.
-fn resolve_sidecar_path(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
-    use anyhow::{anyhow, Context};
-    let exe = app
-        .path()
-        .resource_dir()
-        .or_else(|_| std::env::current_exe().map(|p| p.parent().map(|p| p.to_path_buf()).unwrap_or_default()))
-        .context("resolve resource dir")?;
-
-    // Candidate 1: resource-dir / drawcast-mcp-<target-triple>.
-    // Candidate 2: resource-dir / drawcast-mcp (generic dev name).
-    let triple = target_triple();
-    let with_triple = exe.join(format!("drawcast-mcp-{triple}"));
-    if with_triple.is_file() {
-        return Ok(with_triple);
-    }
-    let plain = exe.join("drawcast-mcp");
-    if plain.is_file() {
-        return Ok(plain);
-    }
-
-    // Development fallback: assume drawcast-mcp is on PATH (the user installed
-    // it globally via `pnpm --filter @drawcast/mcp-server install -g`, or the
-    // dev scripts prepared it).
-    if let Some(on_path) = which_in_path("drawcast-mcp") {
-        return Ok(on_path);
-    }
-
-    Err(anyhow!(
-        "could not locate drawcast-mcp sidecar (checked {}, {}, and PATH)",
-        with_triple.display(),
-        plain.display()
-    ))
-}
-
-fn which_in_path(name: &str) -> Option<PathBuf> {
-    let path_var = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path_var) {
-        let candidate = dir.join(name);
-        if candidate.is_file() {
-            return Some(candidate);
+/// Lazy chat spawner. Called from `chat_send` on first use, or after the
+/// previous child exited. Pulls the current session path + sidecar port
+/// from managed state so the child inherits both without the frontend
+/// having to orchestrate.
+async fn ensure_chat_running(app: &tauri::AppHandle) -> Result<(), String> {
+    // Reuse an existing host only if its child is still alive; otherwise
+    // drop the dead handle so the spawn path below kicks in.
+    {
+        let state: tauri::State<'_, ManagedChatHost> = app.state();
+        let mut guard = state.lock().await;
+        if let Some(existing) = guard.as_ref() {
+            if existing.is_alive().await {
+                return Ok(());
+            }
         }
+        *guard = None;
     }
-    None
-}
 
-fn target_triple() -> &'static str {
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    {
-        "aarch64-apple-darwin"
+    let session_path: PathBuf = {
+        let state: tauri::State<'_, ManagedSession> = app.state();
+        let guard = state.lock().map_err(|e| e.to_string())?;
+        let meta = guard
+            .as_ref()
+            .ok_or_else(|| "no active session".to_string())?;
+        session::session_path_for(&meta.id).map_err(|e| e.to_string())?
+    };
+    if !session_path.is_dir() {
+        return Err(format!(
+            "session path does not exist: {}",
+            session_path.display()
+        ));
     }
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+
+    let sidecar_port: Option<u16> = {
+        let state: tauri::State<'_, ManagedSidecar> = app.state();
+        let opt = {
+            let guard = state.lock().map_err(|e| e.to_string())?;
+            guard.clone()
+        };
+        match opt {
+            Some(s) => s.port().await,
+            None => None,
+        }
+    };
+
+    let host = ChatHost::spawn(app, session_path, sidecar_port).map_err(|e| e.to_string())?;
     {
-        "x86_64-apple-darwin"
+        let state: tauri::State<'_, ManagedChatHost> = app.state();
+        let mut guard = state.lock().await;
+        *guard = Some(host);
     }
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    {
-        "x86_64-unknown-linux-gnu"
-    }
-    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    {
-        "aarch64-unknown-linux-gnu"
-    }
-    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    {
-        "x86_64-pc-windows-msvc"
-    }
-    #[cfg(not(any(
-        all(target_os = "macos", target_arch = "aarch64"),
-        all(target_os = "macos", target_arch = "x86_64"),
-        all(target_os = "linux", target_arch = "x86_64"),
-        all(target_os = "linux", target_arch = "aarch64"),
-        all(target_os = "windows", target_arch = "x86_64"),
-    )))]
-    {
-        "unknown"
-    }
+    Ok(())
 }
 
 /// Shape returned to the frontend's `checkForUpdates()` wrapper.

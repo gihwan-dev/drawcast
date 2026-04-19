@@ -1,14 +1,13 @@
-import { CliSelect } from './CliSelect.js';
 import { SessionSelect } from './SessionSelect.js';
 import { SnapshotButton } from './SnapshotButton.js';
 import { UploadButton } from './UploadButton.js';
 import { useSettingsStore } from '../store/settingsStore.js';
 
 /**
- * 44px app-chrome strip. Hosts the logo, the CLI selector, and a theme-mode
- * toggle. Acts as a window drag region via `data-tauri-drag-region` so users
- * can move the window from the top bar; interactive children opt out with
- * `data-tauri-drag-region="false"`.
+ * 44px app-chrome strip. Hosts the logo, the session selector, and a
+ * theme-mode toggle. Acts as a window drag region via `data-tauri-drag-region`
+ * so users can move the window from the top bar; interactive children opt out
+ * with `data-tauri-drag-region="false"`.
  */
 export function TopBar(): JSX.Element {
   const themeMode = useSettingsStore((s) => s.themeMode);
@@ -28,7 +27,6 @@ export function TopBar(): JSX.Element {
       </span>
       <div className="flex items-center gap-dc-md">
         <SessionSelect />
-        <CliSelect />
         <SnapshotButton />
         <UploadButton />
         <button

@@ -80,7 +80,6 @@ describe('CanvasPanel', () => {
       });
       useSettingsStore.setState({
         themeMode: 'light',
-        cliChoice: null,
         panelRatio: 0.4,
       });
     });

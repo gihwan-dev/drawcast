@@ -9,10 +9,11 @@ import {
 } from './mcp/sidecarBridge.js';
 import { useMcpConnected } from './mcp/context.js';
 import { CanvasPanel } from './panels/CanvasPanel.js';
-import { TerminalPanel } from './panels/TerminalPanel.js';
+import { ChatPanel } from './panels/ChatPanel.js';
 import { Welcome } from './pages/Welcome.js';
-import { getDefaultSessionPath } from './services/cli.js';
+import { getDefaultSessionPath } from './services/chat.js';
 import { subscribeSessionSwitched } from './services/session.js';
+import { useChatStore } from './store/chatStore.js';
 import { useSceneStore } from './store/sceneStore.js';
 import { useSessionStore } from './store/sessionStore.js';
 import { useSettingsStore } from './store/settingsStore.js';
@@ -31,7 +32,6 @@ export function App(): JSX.Element {
   const panelRatio = useSettingsStore((s) => s.panelRatio);
   const setPanelRatio = useSettingsStore((s) => s.setPanelRatio);
   const themeMode = useSettingsStore((s) => s.themeMode);
-  const cliChoice = useSettingsStore((s) => s.cliChoice);
   const welcomeDismissed = useWelcomeStore((s) => s.dismissed);
   const connected = useMcpConnected();
 
@@ -100,13 +100,14 @@ export function App(): JSX.Element {
   }, [sessionPath, setSessionPath]);
 
   // Bootstrap session state (current + list) and subscribe to the
-  // `session-switched` event so the dropdown + sceneStore stay in sync when
-  // Rust orchestrates a switch.
+  // `session-switched` event so the dropdown + sceneStore + chat history
+  // all reset together when Rust orchestrates a switch.
   useEffect(() => {
     void loadSessions();
     const dispose = subscribeSessionSwitched((meta) => {
       setCurrentSession(meta);
       resetScene();
+      useChatStore.getState().reset();
       void refreshSessionList();
     });
     return () => {
@@ -114,12 +115,10 @@ export function App(): JSX.Element {
     };
   }, [loadSessions, refreshSessionList, resetScene, setCurrentSession]);
 
-  // Show Welcome on first launch — when the user has neither dismissed
-  // it nor committed to a CLI. Connecting through the Welcome CTA sets
-  // `cliChoice`, which hides the overlay naturally; "Skip for now" sets
-  // `dismissed` so reopening the app doesn't re-prompt even when no CLI
-  // is still attached.
-  const showWelcome = !welcomeDismissed && cliChoice === null;
+  // Show Welcome on first launch until the user explicitly dismisses it.
+  // The new onboarding just verifies that `claude` is installed + logged in;
+  // there is no CLI choice to gate on any more.
+  const showWelcome = !welcomeDismissed;
 
   return (
     <div className="relative flex h-screen flex-col bg-dc-bg-app text-dc-text-primary">
@@ -127,7 +126,7 @@ export function App(): JSX.Element {
       <Splitter
         ratio={panelRatio}
         onRatioChange={setPanelRatio}
-        left={<TerminalPanel />}
+        left={<ChatPanel />}
         right={<CanvasPanel />}
       />
       <StatusBar />

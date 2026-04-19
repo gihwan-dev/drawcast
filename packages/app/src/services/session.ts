@@ -4,14 +4,14 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-export type CliChoice = 'claude-code' | 'codex';
-
 export interface SessionMeta {
   id: string;
   name: string;
   createdAt: number;
   updatedAt: number;
-  cliChoice: CliChoice | null;
+  /** Historical field from the pre-chat architecture. Kept optional so
+   * existing session directories still deserialize; new code ignores it. */
+  cliChoice?: string | null;
   theme: string;
   lastKnownPort: number | null;
 }

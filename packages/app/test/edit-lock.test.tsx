@@ -77,7 +77,6 @@ function resetStores(): void {
     });
     useSettingsStore.setState({
       themeMode: 'light',
-      cliChoice: null,
       panelRatio: 0.4,
     });
     useEditLockStore.setState({ lockedIds: new Set() });

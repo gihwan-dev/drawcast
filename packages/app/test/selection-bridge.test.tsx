@@ -6,33 +6,14 @@ import type { LabelBox, PrimitiveId } from '@drawcast/core';
 import { useSceneStore } from '../src/store/sceneStore.js';
 import { useSidecarStore } from '../src/store/sidecarStore.js';
 import { useSettingsStore } from '../src/store/settingsStore.js';
+import { useChatStore } from '../src/store/chatStore.js';
 import { CanvasPanel } from '../src/panels/CanvasPanel.js';
-import {
-  __resetActiveTerminalForTests,
-  writeToActiveTerminal,
-} from '../src/panels/TerminalPanel.js';
 import type { McpClient } from '../src/mcp/client.js';
 import { McpClientContext } from '../src/mcp/context.js';
 import {
   getExcalidrawMock,
   resetExcalidrawMock,
 } from './mocks/excalidraw.js';
-
-// Spy hook: tests want to observe `writeToActiveTerminal`. Since the real
-// impl is a module-scoped function, we monkeypatch its targeted backing
-// state through the reset helper — the test invokes the getter directly
-// via a spy wrapper captured here.
-vi.mock('../src/panels/TerminalPanel.js', async () => {
-  const actual = await vi.importActual<typeof import('../src/panels/TerminalPanel.js')>(
-    '../src/panels/TerminalPanel.js',
-  );
-  return {
-    ...actual,
-    writeToActiveTerminal: vi.fn(actual.writeToActiveTerminal),
-  };
-});
-
-const writeMock = vi.mocked(writeToActiveTerminal);
 
 function createFakeClient(): {
   client: McpClient;
@@ -76,14 +57,12 @@ const primitive: LabelBox = {
 describe('selection bridge — inbound', () => {
   beforeEach(() => {
     resetExcalidrawMock();
-    writeMock.mockClear();
-    __resetActiveTerminalForTests();
     act(() => {
       useSceneStore.getState().reset();
+      useChatStore.getState().reset();
       useSidecarStore.setState({ status: 'ready', port: 43017, lastExitCode: null });
       useSettingsStore.setState({
         themeMode: 'light',
-        cliChoice: null,
         panelRatio: 0.4,
       });
     });
@@ -141,14 +120,12 @@ describe('selection bridge — inbound', () => {
 describe('selection bridge — outbound loop guard', () => {
   beforeEach(() => {
     resetExcalidrawMock();
-    writeMock.mockClear();
-    __resetActiveTerminalForTests();
     act(() => {
       useSceneStore.getState().reset();
+      useChatStore.getState().reset();
       useSidecarStore.setState({ status: 'ready', port: 43017, lastExitCode: null });
       useSettingsStore.setState({
         themeMode: 'light',
-        cliChoice: null,
         panelRatio: 0.4,
       });
     });
@@ -198,20 +175,18 @@ describe('selection bridge — outbound loop guard', () => {
 describe('selection bridge — context menu', () => {
   beforeEach(() => {
     resetExcalidrawMock();
-    writeMock.mockClear();
-    __resetActiveTerminalForTests();
     act(() => {
       useSceneStore.getState().reset();
+      useChatStore.getState().reset();
       useSidecarStore.setState({ status: 'ready', port: 43017, lastExitCode: null });
       useSettingsStore.setState({
         themeMode: 'light',
-        cliChoice: null,
         panelRatio: 0.4,
       });
     });
   });
 
-  it('right-click on a selected element injects [node: id] into the terminal', async () => {
+  it('right-click on a selected element appends [node: id] to the chat draft', async () => {
     const { client } = createFakeClient();
     renderWithMcp(client, true);
 
@@ -235,7 +210,7 @@ describe('selection bridge — context menu', () => {
 
     fireEvent.click(menuItem);
 
-    expect(writeMock).toHaveBeenCalledTimes(1);
-    expect(writeMock).toHaveBeenCalledWith('[node: p-login] ');
+    // The chat composer's draft should now include the node reference.
+    expect(useChatStore.getState().draft.text).toContain('[node: p-login]');
   });
 });

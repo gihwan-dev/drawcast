@@ -15,12 +15,9 @@ import { handlePreviewRequest } from '../src/mcp/preview.js';
 import { SnapshotButton } from '../src/components/SnapshotButton.js';
 import type { McpClient } from '../src/mcp/client.js';
 import { useCanvasStore } from '../src/store/canvasStore.js';
+import { useChatStore } from '../src/store/chatStore.js';
 import { useSessionStore } from '../src/store/sessionStore.js';
 import { useToastStore } from '../src/store/toastStore.js';
-import {
-  __resetActiveTerminalForTests,
-  writeToActiveTerminal,
-} from '../src/panels/TerminalPanel.js';
 import {
   getExportBlobCalls,
   resetExcalidrawMock,
@@ -28,33 +25,7 @@ import {
   setNextExportError,
 } from './mocks/excalidraw.js';
 
-// Match the CLI service mock shape from other tests so rendering the
-// TopBar/SnapshotButton doesn't fail on Tauri invocations we don't care
-// about here.
-vi.mock('../src/services/cli.js', () => ({
-  registerCli: vi.fn(async () => 'added'),
-  spawnCli: vi.fn(async () => undefined),
-  sendStdin: vi.fn(async () => undefined),
-  resizeCli: vi.fn(async () => undefined),
-  shutdownCli: vi.fn(async () => undefined),
-  getDefaultSessionPath: vi.fn(async () => '/tmp/drawcast-session'),
-  subscribeCliOutput: vi.fn(() => () => undefined),
-  subscribeCliExit: vi.fn(() => () => undefined),
-}));
-
-// Spy on `writeToActiveTerminal` so we can assert the @previews prefill.
-vi.mock('../src/panels/TerminalPanel.js', async () => {
-  const actual = await vi.importActual<
-    typeof import('../src/panels/TerminalPanel.js')
-  >('../src/panels/TerminalPanel.js');
-  return {
-    ...actual,
-    writeToActiveTerminal: vi.fn(actual.writeToActiveTerminal),
-  };
-});
-
 const invokeMock = vi.mocked(invoke);
-const writeMock = vi.mocked(writeToActiveTerminal);
 
 interface PreviewPost {
   requestId: string;
@@ -150,9 +121,7 @@ describe('handlePreviewRequest', () => {
 describe('SnapshotButton', () => {
   beforeEach(() => {
     resetExcalidrawMock();
-    writeMock.mockClear();
     invokeMock.mockReset();
-    __resetActiveTerminalForTests();
     act(() => {
       useSessionStore.setState({
         id: null,
@@ -161,6 +130,7 @@ describe('SnapshotButton', () => {
         list: [],
       });
       useCanvasStore.getState().setApi(null);
+      useChatStore.getState().reset();
       useToastStore.getState().clear();
     });
   });
@@ -169,7 +139,7 @@ describe('SnapshotButton', () => {
     invokeMock.mockReset();
   });
 
-  it('saves a snapshot, prefills the terminal, and shows a success toast', async () => {
+  it('saves a snapshot, appends the preview path to the chat draft, and shows a success toast', async () => {
     invokeMock.mockImplementation(async (cmd, args) => {
       if (cmd === 'save_preview_bytes') {
         const payload = args as { filename: string };
@@ -215,9 +185,8 @@ describe('SnapshotButton', () => {
     expect(payload.filename).toMatch(/^snap-\d+\.png$/);
     expect(payload.data).toEqual([1, 2, 3]);
 
-    expect(writeMock).toHaveBeenCalledTimes(1);
-    const written = writeMock.mock.calls[0]![0];
-    expect(written).toMatch(/^@previews\/snap-\d+\.png $/);
+    const draftText = useChatStore.getState().draft.text;
+    expect(draftText).toMatch(/@previews\/snap-\d+\.png/);
 
     const toasts = useToastStore.getState().toasts;
     expect(toasts).toHaveLength(1);

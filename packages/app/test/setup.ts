@@ -1,12 +1,9 @@
 import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
 
-// xterm addons are UMD bundles that reference `self` — undefined in jsdom.
-if (typeof globalThis.self === 'undefined') {
-  (globalThis as unknown as { self: typeof globalThis }).self = globalThis;
-}
-
-// jsdom lacks ResizeObserver; TerminalPanel + CanvasPanel observe layout.
+// jsdom lacks ResizeObserver; CanvasPanel (and previously TerminalPanel)
+// observe layout. Leaving the shim in place keeps future panel code from
+// tripping on jsdom.
 if (typeof globalThis.ResizeObserver === 'undefined') {
   (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver =
     class {
@@ -15,28 +12,6 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
       disconnect(): void {}
     };
 }
-
-// TerminalPanel dynamically imports xterm; mock the whole module so jsdom
-// never tries to evaluate its canvas-dependent code paths.
-vi.mock('@xterm/xterm', () => ({
-  Terminal: vi.fn().mockImplementation(() => ({
-    open: vi.fn(),
-    write: vi.fn(),
-    onData: vi.fn(() => ({ dispose: vi.fn() })),
-    paste: vi.fn(),
-    dispose: vi.fn(),
-    loadAddon: vi.fn(),
-    focus: vi.fn(),
-    get cols() { return 80; },
-    get rows() { return 24; },
-  })),
-}));
-vi.mock('@xterm/addon-fit', () => ({
-  FitAddon: vi.fn().mockImplementation(() => ({
-    fit: vi.fn(),
-    dispose: vi.fn(),
-  })),
-}));
 
 // jsdom doesn't have matchMedia — a few React components probe it.
 if (typeof window.matchMedia !== 'function') {
@@ -56,7 +31,7 @@ if (typeof window.matchMedia !== 'function') {
 }
 
 // Tauri event bus isn't available in jsdom. Stub the two entrypoints the
-// sidecar bridge relies on so `App` can mount without crashing.
+// sidecar / chat bridges rely on so `App` can mount without crashing.
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(async () => () => {}),
 }));

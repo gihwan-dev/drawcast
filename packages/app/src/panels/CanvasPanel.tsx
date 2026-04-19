@@ -36,11 +36,11 @@ import type {
 import { compile } from '@drawcast/core';
 import type { CompileResult } from '@drawcast/core';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types';
-import { writeToActiveTerminal } from './TerminalPanel.js';
 import { CanvasToolbar } from '../components/CanvasToolbar.js';
 import { useSceneStore } from '../store/sceneStore.js';
 import { useSettingsStore } from '../store/settingsStore.js';
 import { useCanvasStore } from '../store/canvasStore.js';
+import { useChatStore } from '../store/chatStore.js';
 import { useEditLockStore } from '../store/editLockStore.js';
 import { resolveBuiltinTheme } from '../theme/builtinThemes.js';
 import { useMcp, useMcpConnected } from '../mcp/context.js';
@@ -351,7 +351,9 @@ export function CanvasPanel(): JSX.Element {
 
   const onFeedbackClick = useCallback((): void => {
     if (contextMenu === null) return;
-    writeToActiveTerminal(`[node: ${contextMenu.primitiveId}] `);
+    useChatStore
+      .getState()
+      .appendToDraft(`[node: ${contextMenu.primitiveId}]`);
     setContextMenu(null);
   }, [contextMenu]);
 

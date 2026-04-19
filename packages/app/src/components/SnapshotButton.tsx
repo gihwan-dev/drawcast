@@ -12,8 +12,8 @@
 import { useCallback, useState } from 'react';
 import { Camera } from 'lucide-react';
 import { takeSnapshot } from '../services/snapshot.js';
-import { writeToActiveTerminal } from '../panels/TerminalPanel.js';
 import { useCanvasStore } from '../store/canvasStore.js';
+import { useChatStore } from '../store/chatStore.js';
 import { useSessionStore } from '../store/sessionStore.js';
 import { useToastStore } from '../store/toastStore.js';
 
@@ -37,7 +37,7 @@ export function SnapshotButton(): JSX.Element {
     setBusy(true);
     try {
       const { filename } = await takeSnapshot(api, sessionPath);
-      writeToActiveTerminal(`@previews/${filename} `);
+      useChatStore.getState().appendToDraft(`@previews/${filename}`);
       show('Snapshot saved', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
