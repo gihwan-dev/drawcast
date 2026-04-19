@@ -36,6 +36,13 @@ interface ReconcilerInput {
   fresh: readonly ExcalidrawElement[];
   /** Files associated with the fresh compile (passed through unchanged). */
   files: BinaryFiles;
+  /**
+   * Primitive ids whose local state must not be overwritten by the next
+   * compile. Elements whose `drawcastPrimitiveId` lies in this set are
+   * returned as a copy of their prior version (geometry + identity
+   * preserved). Omit / leave empty when nothing is locked.
+   */
+  lockedIds?: ReadonlySet<string>;
 }
 
 export interface ReconcilerOutput {
@@ -62,7 +69,7 @@ function keyFor(primitiveId: string, type: string): string {
  * Pure: does not mutate either input; returns a new object.
  */
 export function reconcileElements(input: ReconcilerInput): ReconcilerOutput {
-  const { prev, fresh, files } = input;
+  const { prev, fresh, files, lockedIds } = input;
   if (prev === null || prev.length === 0) {
     // No prior frame — nothing to stabilise against. Copy the fresh array
     // so callers never see internal references.
@@ -81,6 +88,11 @@ export function reconcileElements(input: ReconcilerInput): ReconcilerOutput {
     if (pid === null) return { ...el };
     const match = prevByKey.get(keyFor(pid, el.type));
     if (match === undefined) return { ...el };
+    // Edit-locked primitives: keep the prior element verbatim so a fresh
+    // MCP snapshot can't clobber the user's local drag / delete / resize.
+    if (lockedIds !== undefined && lockedIds.has(pid)) {
+      return { ...match };
+    }
     return {
       ...el,
       id: match.id,

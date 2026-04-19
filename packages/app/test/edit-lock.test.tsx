@@ -130,6 +130,66 @@ describe('edit-lock detection', () => {
     expect(useEditLockStore.getState().lockedIds.has('p-login')).toBe(true);
   });
 
+  it('preserves locally-edited geometry when a fresh MCP snapshot arrives', async () => {
+    // B4 integration: once a primitive is lock-flagged, the next scene
+    // push from the server must NOT overwrite what the user just dragged.
+    const { client } = createFakeClient();
+    renderWithMcp(client);
+
+    await act(async () => {
+      useSceneStore.getState().setSnapshot({
+        primitives: [primitive],
+        theme: 'sketchy',
+        selection: [],
+        locked: [],
+      });
+    });
+
+    const mock = getExcalidrawMock();
+    const initialRendered = (mock.lastElements as ReadonlyArray<{
+      id: string;
+      type: string;
+      x: number;
+      y: number;
+      version: number;
+      customData?: { drawcastPrimitiveId?: string };
+    }>).map((el) => ({ ...el }));
+    const rect = initialRendered.find((el) => el.type === 'rectangle')!;
+    expect(rect).toBeDefined();
+
+    // Simulate a drag: rectangle version bumps + moves +200,+150.
+    const movedRect = { ...rect, x: rect.x + 200, y: rect.y + 150, version: rect.version + 2 };
+    const mutated = initialRendered.map((el) =>
+      el.id === rect.id ? movedRect : el,
+    );
+
+    await act(async () => {
+      mock.onChange?.(mutated, { selectedElementIds: {} });
+    });
+    expect(useEditLockStore.getState().lockedIds.has('p-login')).toBe(true);
+
+    // Server pushes the same primitive again — compiling would place it
+    // back at the origin. The reconciler must keep the dragged geometry.
+    await act(async () => {
+      useSceneStore.getState().setSnapshot({
+        primitives: [primitive],
+        theme: 'sketchy',
+        selection: [],
+        locked: ['p-login'],
+      });
+    });
+
+    const afterSnapshot = mock.lastElements as ReadonlyArray<{
+      id: string;
+      type: string;
+      x: number;
+      y: number;
+    }>;
+    const rectAfter = afterSnapshot.find((el) => el.type === 'rectangle')!;
+    expect(rectAfter.x).toBe(movedRect.x);
+    expect(rectAfter.y).toBe(movedRect.y);
+  });
+
   it('does NOT post editLock when onChange echoes the rendered versions', async () => {
     const { client, editLockCalls } = createFakeClient();
     renderWithMcp(client);

@@ -98,4 +98,77 @@ describe('reconcileElements', () => {
     // p2 is new — keeps the fresh id.
     expect(result.elements[1]!.id).toBe('brand-new');
   });
+
+  // B4: once a primitive is edit-locked by the user, later MCP snapshots
+  // must NOT trample its local geometry. The reconciler is where that
+  // preference is enforced — it has both the prior rendered element
+  // (the user's edited state) and the fresh compile, and returns the
+  // prior object verbatim whenever the primitive id is in the lock set.
+  it('keeps the full prior element for locked primitives (geometry + identity)', () => {
+    const prev = [
+      make('b1', 'rectangle', {
+        id: 'stable-id',
+        x: 500,
+        y: 500,
+        width: 120,
+        height: 60,
+        version: 7,
+      }),
+    ];
+    const fresh = [
+      make('b1', 'rectangle', {
+        id: 'fresh-id',
+        x: 100,
+        y: 100,
+        width: 80,
+        height: 40,
+        version: 1,
+      }),
+    ];
+    const result = reconcileElements({
+      prev,
+      fresh,
+      files: {},
+      lockedIds: new Set(['b1']),
+    });
+    const el = result.elements[0]!;
+    expect(el.id).toBe('stable-id');
+    expect(el.x).toBe(500);
+    expect(el.y).toBe(500);
+    expect(el.width).toBe(120);
+    expect(el.height).toBe(60);
+    expect(el.version).toBe(7);
+  });
+
+  it('unlocked primitive adopts fresh geometry but keeps the stable id', () => {
+    const prev = [
+      make('b1', 'rectangle', { id: 'stable-id', x: 500, y: 500, version: 7 }),
+    ];
+    const fresh = [
+      make('b1', 'rectangle', { id: 'fresh-id', x: 100, y: 100, version: 1 }),
+    ];
+    const result = reconcileElements({
+      prev,
+      fresh,
+      files: {},
+      lockedIds: new Set(),
+    });
+    const el = result.elements[0]!;
+    expect(el.id).toBe('stable-id');
+    expect(el.x).toBe(100);
+    expect(el.y).toBe(100);
+    expect(el.version).toBe(7);
+  });
+
+  it('lockedIds is optional — omitted means "none locked"', () => {
+    const prev = [
+      make('b1', 'rectangle', { id: 'stable-id', x: 500, y: 500 }),
+    ];
+    const fresh = [
+      make('b1', 'rectangle', { id: 'fresh-id', x: 100, y: 100 }),
+    ];
+    const result = reconcileElements({ prev, fresh, files: {} });
+    expect(result.elements[0]!.x).toBe(100);
+    expect(result.elements[0]!.y).toBe(100);
+  });
 });
