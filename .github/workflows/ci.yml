@@ -24,7 +24,17 @@ jobs:
           node-version: '22'
           cache: pnpm
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - run: pnpm install --frozen-lockfile
+
+      # app#build runs `prebuild` (mcp-server build + bun sidecar compile)
+      # and `vite build` — both needed before `turbo test` kicks it off.
+      - run: pnpm --filter @drawcast/core build
+      - run: pnpm --filter @drawcast/mcp-server build
+      - run: node packages/app/scripts/build-sidecar.mjs --target x86_64-unknown-linux-gnu
 
       - run: pnpm lint
       - run: pnpm typecheck
