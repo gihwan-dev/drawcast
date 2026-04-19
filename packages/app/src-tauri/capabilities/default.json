@@ -9,7 +9,19 @@
     "shell:allow-execute",
     {
       "identifier": "shell:allow-spawn",
-      "allow": [{ "name": "binaries/drawcast-mcp", "sidecar": true }]
+      "allow": [
+        {
+          "name": "binaries/drawcast-mcp",
+          "sidecar": true,
+          "args": [
+            "--sse",
+            "--port",
+            { "validator": "^(auto|\\d+)$" },
+            "--session-path",
+            { "validator": ".+" }
+          ]
+        }
+      ]
     },
     "dialog:default",
     "dialog:allow-open",

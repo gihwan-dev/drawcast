@@ -39,22 +39,6 @@
     }
   },
   "plugins": {
-    "shell": {
-      "sidecar": true,
-      "scope": [
-        {
-          "name": "binaries/drawcast-mcp",
-          "sidecar": true,
-          "args": [
-            "--sse",
-            "--port",
-            { "validator": "^(auto|\\d+)$" },
-            "--session-path",
-            { "validator": ".+" }
-          ]
-        }
-      ]
-    },
     "updater": {
       "active": true,
       "endpoints": [
