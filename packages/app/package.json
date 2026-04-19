@@ -19,6 +19,7 @@
     "clean": "rm -rf dist .turbo src-tauri/target src-tauri/binaries/drawcast-mcp-*"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.12.25",
     "@drawcast/core": "workspace:*",
     "@excalidraw/excalidraw": "^0.17.6",
     "@tauri-apps/api": "^2.1.1",
