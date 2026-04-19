@@ -2,7 +2,9 @@
 
 > 자연어 CLI로 구조화된 Excalidraw 다이어그램을 빠르게 뽑아주는 데스크톱 도구.
 
-Tauri 기반 데스크톱 앱 + MCP 서버. Claude Code / Codex CLI와 연동해 좌측 터미널에 자연어 명령을 입력하면 우측 Excalidraw 캔버스에 실시간 반영됩니다. 언제든 Copy as Excalidraw → Obsidian Excalidraw · Excalidraw 웹 · `@excalidraw/excalidraw` 어디로든 옮겨서 마무리 편집을 이어갈 수 있습니다.
+Tauri 기반 데스크톱 앱 + MCP 서버. 좌측 채팅 패널에 Claude로 메시지를 보내면(이미지·PDF·Markdown 여러 개 첨부 가능) 우측 Excalidraw 캔버스에 실시간 반영됩니다. 언제든 Copy as Excalidraw → Obsidian Excalidraw · Excalidraw 웹 · `@excalidraw/excalidraw` 어디로든 옮겨서 마무리 편집을 이어갈 수 있습니다.
+
+인증은 사용자 머신에 이미 로그인된 `claude` CLI의 OAuth 세션을 재사용합니다 — **Claude Pro/Max 구독이 그대로 적용**되며 별도 API 키 설정이 필요 없습니다.
 
 ## 설치
 
@@ -34,17 +36,18 @@ Tauri 기반 데스크톱 앱 + MCP 서버. Claude Code / Codex CLI와 연동해
 
 ## 쓰는 법
 
-1. 앱 실행 → Welcome 화면에서 Claude Code 또는 Codex 선택 → **Connect CLI**.
-2. 좌측 터미널에서 자연어로 "박스 3개 그리고 화살표로 이어줘" 같은 명령 입력.
-3. 우측 Excalidraw에 실시간 반영.
-4. 상단 우측 Toolbar에서 **Copy PNG** / **Copy Excalidraw** / **Export**로 내보내기.
-5. 노드를 수동으로 드래그하면 잠기고 CLI가 그 노드를 덮어쓰지 않습니다. 해제하려면 우상단 **Reset edits**.
+1. `claude` CLI 설치 + `claude login`으로 Pro/Max 계정 로그인 (한 번만).
+2. Drawcast 앱 실행.
+3. 좌측 채팅 패널에서 "박스 3개 그리고 화살표로 이어줘" 같이 자연어로 보내기 (이미지/PDF 여러 개 드래그드롭 가능).
+4. 우측 Excalidraw에 실시간 반영.
+5. 상단 우측 Toolbar에서 **Copy PNG** / **Copy Excalidraw** / **Export**로 내보내기.
+6. 노드를 수동으로 드래그하면 잠기고 Claude가 그 노드를 덮어쓰지 않습니다. 해제하려면 우상단 **Reset edits**.
 
 ## 구조
 
 - `@drawcast/core` — L2 primitive, compile pipeline, 테마, compliance (pure TS)
 - `@drawcast/mcp-server` — SceneStore + 15개 MCP tool + stdio/SSE transport (Node)
-- `@drawcast/app` — Tauri 2.x 셸 + React + xterm.js + `<Excalidraw />` (Rust + TS)
+- `@drawcast/app` — Tauri 2.x 셸 + React + Chat UI + `<Excalidraw />` (Rust + TS). 채팅 백엔드는 `claude -p --input-format stream-json --output-format stream-json` 사이드카.
 
 자세한 설계는 [docs/README.md](docs/README.md).
 

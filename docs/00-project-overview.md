@@ -68,21 +68,21 @@ CLI가 씬을 업데이트할 때 사용자가 이미 수동으로 만진 elemen
 | **Builder API** | MCP tool로 노출된 L2 조작 함수들 (`draw_upsert_box` 등) |
 | **Core** | `@drawcast/core` — pure TS, L2 타입과 compile |
 | **MCP Server** | `@drawcast/mcp-server` — 씬 상태 소유자, CLI 대상 tool 노출 |
-| **App** | `@drawcast/app` — Tauri shell, 뷰어 + CLI 호스트 |
+| **App** | `@drawcast/app` — Tauri shell, 뷰어 + 채팅 UI + `claude` 자식 supervisor |
 
 ## MVP 범위 (기능 체크리스트)
 
 | 기능 | 범위 |
 |---|---|
 | 파일 업로드 (드래그드롭·paste) | ✓ 필수 |
-| 좌측 터미널 패널 (Claude Code / Codex CLI) | ✓ 필수 |
+| 좌측 채팅 패널 (Claude + 다중 파일 첨부) | ✓ 필수 |
 | 우측 Excalidraw 라이브 프리뷰 | ✓ 필수 |
 | 노드 단위 피드백 (선택 → 자연어) | ✓ 필수 |
-| 전체 피드백 (PNG 스냅샷 → CLI 첨부) | ✓ 필수 |
+| 전체 피드백 (PNG 스냅샷 → 채팅 첨부) | ✓ 필수 |
 | Copy as PNG / Copy as Excalidraw | ✓ 필수 |
-| MCP 서버 (SSE) + CLI 자동 등록 버튼 | ✓ 필수 |
+| MCP 서버 (SSE) + Claude CLI OAuth 재사용 | ✓ 필수 |
 | L2 Core 3 + Structural 2 + Coverage 4 | ✓ 필수 |
-| 사용자 편집 보존 (CLI가 덮어쓰지 않음) | ✓ 필수 |
+| 사용자 편집 보존 (Claude가 덮어쓰지 않음) | ✓ 필수 |
 | L3 Graph model (자동 레이아웃) | ✗ 향후 |
 | L4 Domain template (mermaid 어댑터 등) | ✗ 향후 |
 | 채팅 로그 영구 저장 | ✗ 향후 |

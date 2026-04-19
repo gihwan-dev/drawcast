@@ -5,7 +5,7 @@
 `@drawcast/mcp-server`는 다음을 담당한다:
 
 1. **Scene 상태 소유**. 모든 primitive의 single source of truth.
-2. **MCP tool handler**. CLI (Claude Code / Codex)가 호출하는 API.
+2. **MCP tool handler**. Claude CLI(또는 MCP 호환 클라이언트)가 호출하는 API.
 3. **SSE 전송**. 연결된 앱·뷰어에 scene 변경 push.
 4. **HTTP endpoint**. 앱이 preview 이미지 등을 서버에 보고하는 역방향 채널.
 5. **Standalone CLI**. 앱 없이 단독 실행 가능 (`drawcast-mcp`).
@@ -14,7 +14,7 @@
 
 ### 모드 A: stdio
 
-Claude Code / Codex CLI가 프로세스 직접 spawn. 단일 사용자, single-tenant.
+MCP 호환 클라이언트(Claude Code CLI 등)가 프로세스 직접 spawn. 단일 사용자, single-tenant.
 
 ```
 drawcast-mcp --stdio
@@ -690,9 +690,9 @@ pub fn register_codex(port: u16) -> Result<()> {
 }
 ```
 
-UI에는 "Connect CLI" 버튼 클릭 → 드롭다운으로 Claude Code / Codex 선택 → 자동 등록 + "등록됨" 토스트.
+Drawcast 앱 자체는 사용자의 글로벌 Claude 설정 파일(`~/.claude.json` 등)을 편집하지 않는다. 대신 `chat_host`가 `claude`를 spawn할 때 `--mcp-config <session>/mcp.json` 플래그로 임시 MCP 설정 파일을 지정하며, 그 안에 우리 사이드카의 `http://127.0.0.1:<port>/sse` endpoint를 기재한다. 이는 세션 격리를 유지하고 사용자 전역 설정을 건드리지 않기 위함이다.
 
-수동 등록 경로도 제공: "Copy setup command" 버튼으로 CLI 명령어 클립보드 복사.
+수동/헤드리스 경로도 제공: 사용자가 직접 `claude`/다른 MCP 클라이언트에 Drawcast MCP를 등록하려면 "Copy setup command" 버튼으로 stdio 실행 커맨드(`drawcast-mcp --stdio`)를 복사해서 붙여넣을 수 있다.
 
 ## 로깅
 

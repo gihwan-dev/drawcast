@@ -68,7 +68,7 @@
 | mcp-server | `@modelcontextprotocol/sdk`, Node.js, bun build --compile |
 | app shell | Tauri 2.x + Rust |
 | frontend | React 18, Vite, Zustand |
-| terminal | xterm.js |
+| chat transport | `claude` CLI (`-p --input-format stream-json --output-format stream-json`), NDJSON over stdio |
 | drawing | `@excalidraw/excalidraw` |
 | test | Vitest, fast-check, Playwright |
 | release | GitHub Actions matrix, Tauri updater |

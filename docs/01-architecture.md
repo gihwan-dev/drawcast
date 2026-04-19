@@ -59,12 +59,13 @@ drawcast/
 
 ### `@drawcast/app`
 
-**Tauri 셸 + React 프론트엔드**. 뷰어이자 CLI 호스트.
+**Tauri 셸 + React 프론트엔드**. 뷰어이자 Claude 채팅 호스트.
 
-- Tauri (Rust) — sidecar 관리, 파일시스템, 클립보드
-- React 프론트 — xterm.js (터미널), `<Excalidraw />` (뷰어)
+- Tauri (Rust) — MCP sidecar + `claude` 자식 supervisor (`chat_host`), 파일시스템, 클립보드
+- React 프론트 — 좌측 Chat UI, 우측 `<Excalidraw />`
 - MCP SSE subscriber — 씬 변경 → `excalidrawAPI.updateScene()`
 - Selection bridge — Excalidraw 선택 상태 → MCP 서버
+- 채팅 transport — `claude -p --input-format stream-json --output-format stream-json --verbose` NDJSON 양방향
 
 상세: `06-app-shell.md`, `07-session-and-ipc.md`.
 
@@ -78,23 +79,25 @@ drawcast/
 │                                         │
 │  ┌─ Tauri Shell ────────────────────┐  │
 │  │  ┌────────────┐  ┌────────────┐  │  │
-│  │  │ xterm.js   │  │ Excalidraw │  │  │
-│  │  │ (Claude    │  │ (React)    │  │  │
-│  │  │  Code CLI) │  │            │  │  │
+│  │  │ Chat UI    │  │ Excalidraw │  │  │
+│  │  │ (React)    │  │ (React)    │  │  │
 │  │  └─────┬──────┘  └─────┬──────┘  │  │
-│  │        │               │         │  │
+│  │        │ invoke()      │         │  │
+│  │  ┌─────▼──────────┐    │         │  │
+│  │  │ chat_host (Rs) │    │         │  │
+│  │  │ spawns claude  │    │         │  │
+│  │  └─────┬──────────┘    │         │  │
 │  └────────┼───────────────┼─────────┘  │
-│           │               │            │
-│           │ MCP (SSE)     │ updateScene│
+│           │ MCP auto-load │ updateScene│
 │           ▼               ▼            │
 │  ┌─ Sidecar: @drawcast/mcp-server ─┐  │
-│  │    listens on :43017            │  │
+│  │    listens on :<auto>           │  │
 │  │    owns SceneStore              │  │
 │  └──────────────────────────────────┘  │
 └─────────────────────────────────────────┘
 ```
 
-앱 시작 → Tauri가 sidecar로 MCP 서버 spawn → 프론트가 SSE 구독. CLI는 앱 내부 터미널에서 실행되며, "Connect CLI" 버튼으로 MCP 설정이 자동 주입된다.
+앱 시작 → Tauri가 sidecar로 MCP 서버 spawn → 프론트가 SSE 구독. 사용자 메시지는 Rust의 `chat_host`가 `claude -p --input-format stream-json --output-format stream-json --verbose` 자식 프로세스로 전달. `claude`는 사용자 `~/.claude/` OAuth(Pro/Max 구독)로 인증하고, `--mcp-config`로 우리 MCP 사이드카를 자동 로드해 도구 호출 → SceneStore 갱신 → 캔버스 반영의 사이클을 만든다.
 
 ### 모드 2: 단독 MCP (헤드리스)
 
