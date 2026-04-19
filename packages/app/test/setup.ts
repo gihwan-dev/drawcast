@@ -1,6 +1,43 @@
 import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
 
+// xterm addons are UMD bundles that reference `self` — undefined in jsdom.
+if (typeof globalThis.self === 'undefined') {
+  (globalThis as unknown as { self: typeof globalThis }).self = globalThis;
+}
+
+// jsdom lacks ResizeObserver; TerminalPanel + CanvasPanel observe layout.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver =
+    class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    };
+}
+
+// TerminalPanel dynamically imports xterm; mock the whole module so jsdom
+// never tries to evaluate its canvas-dependent code paths.
+vi.mock('@xterm/xterm', () => ({
+  Terminal: vi.fn().mockImplementation(() => ({
+    open: vi.fn(),
+    write: vi.fn(),
+    onData: vi.fn(() => ({ dispose: vi.fn() })),
+    paste: vi.fn(),
+    dispose: vi.fn(),
+    loadAddon: vi.fn(),
+    focus: vi.fn(),
+    get cols() { return 80; },
+    get rows() { return 24; },
+  })),
+}));
+vi.mock('@xterm/addon-fit', () => ({
+  FitAddon: vi.fn().mockImplementation(() => ({
+    fit: vi.fn(),
+    dispose: vi.fn(),
+  })),
+}));
+
 // jsdom doesn't have matchMedia — a few React components probe it.
 if (typeof window.matchMedia !== 'function') {
   Object.defineProperty(window, 'matchMedia', {
