@@ -147,6 +147,10 @@ export function CanvasPanel(): JSX.Element {
   const storeLocked = useSceneStore((s) => s.locked);
   const setSelection = useSceneStore((s) => s.setSelection);
   const themeMode = useSettingsStore((s) => s.themeMode);
+  // Subscribed so the effect below re-runs whenever the local lock set
+  // changes — otherwise a freshly locked primitive would wait until the
+  // NEXT MCP snapshot before its geometry becomes sticky.
+  const lockedIds = useEditLockStore((s) => s.lockedIds);
   const client = useMcp();
   const connected = useMcpConnected();
   const [apiReady, setApiReady] = useState(false);
@@ -208,6 +212,7 @@ export function CanvasPanel(): JSX.Element {
       prev: prevReconciledElementsRef.current,
       fresh: compiled.elements,
       files: compiled.files,
+      lockedIds,
     });
     prevReconciledElementsRef.current = out.elements;
     const versions = new Map<string, number>();
@@ -220,7 +225,7 @@ export function CanvasPanel(): JSX.Element {
     if (files.length > 0) {
       api.addFiles(files);
     }
-  }, [apiReady, compiled]);
+  }, [apiReady, compiled, lockedIds]);
 
   // Inbound selection sync: when sceneStore.selection changes (pushed by
   // the server or the setSelection helper), translate primitive ids back
@@ -419,6 +424,13 @@ export function CanvasPanel(): JSX.Element {
     if (newlyLocked.size > 0) {
       const ids = [...newlyLocked];
       useEditLockStore.getState().addLocks(ids);
+      // Freeze the user's post-edit element array as the new "previous
+      // frame" baseline. Without this, the next MCP snapshot would
+      // reconcile against the pre-edit geometry and the lockedIds branch
+      // would spring the box back to its pre-drag position.
+      prevReconciledElementsRef.current = elements.map(
+        (el) => ({ ...el }) as unknown as ExcalidrawElement,
+      );
       if (client !== null) {
         void client.postEditLock(ids, true).catch((err: unknown) => {
           // eslint-disable-next-line no-console
