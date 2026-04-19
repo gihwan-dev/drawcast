@@ -167,6 +167,22 @@ export async function startSSE(
     const parsedUrl = new URL(req.url ?? '/', `http://${host}:${port}`);
     const pathname = parsedUrl.pathname;
 
+    // The Tauri webview calls us from http://localhost:1420 in dev and
+    // tauri://localhost (or https://tauri.localhost on Windows) in prod, so
+    // reflect the requesting Origin. Server binds to 127.0.0.1 already, so
+    // this is as restrictive as the network surface.
+    const origin = req.headers.origin ?? '*';
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Vary', 'Origin');
+
+    if (method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     if (method === 'GET' && pathname === '/healthz') {
       return respondJSON(res, 200, {
         ok: true,
