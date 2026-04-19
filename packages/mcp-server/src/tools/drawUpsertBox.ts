@@ -6,18 +6,26 @@ import { z } from 'zod';
 import type { LabelBox, PrimitiveId } from '@drawcast/core';
 import { SceneLockError } from '../store.js';
 import { lockErrorMessage } from './errors.js';
-import { defineTool, type ToolExecutionResult } from './types.js';
+import {
+  defineTool,
+  type ToolContentBlock,
+  type ToolExecutionResult,
+} from './types.js';
 import {
   FontFamilySchema,
   POINT_JSON_SCHEMA,
   PointSchema,
+  RETURN_PREVIEW_JSON_SCHEMA,
+  ReturnPreviewSchema,
   SIZE_JSON_SCHEMA,
   SizeSchema,
   STYLE_REF_JSON_SCHEMA,
   StyleRefSchema,
   formatZodError,
+  normalizeReturnPreview,
   normalizeStyleRef,
 } from './utils.js';
+import { requestScenePreview } from './helpers/preview.js';
 
 const ShapeSchema = z.enum(['rectangle', 'ellipse', 'diamond']);
 const TextAlignSchema = z.enum(['left', 'center', 'right']);
@@ -41,12 +49,13 @@ export const drawUpsertBoxInputSchema = z.object({
   angle: z.number().optional(),
   locked: z.boolean().optional(),
   opacity: z.number().min(0).max(100).optional(),
+  returnPreview: ReturnPreviewSchema,
 });
 
 export type DrawUpsertBoxInput = z.infer<typeof drawUpsertBoxInputSchema>;
 
 const DESCRIPTION =
-  'Add or update a labeled box in the current scene. Use this for nodes in a diagram (process, decision, data, etc.). Same id re-applies as an update (upsert). Size auto-fits to text unless fit="fixed" with explicit size.';
+  'Add or update a labeled box in the current scene. Use this for nodes in a diagram (process, decision, data, etc.). Same id re-applies as an update (upsert). Size auto-fits to text unless fit="fixed" with explicit size. Pass `returnPreview: true` to receive a PNG snapshot of the scene after the upsert for visual self-review.';
 
 export const drawUpsertBox = defineTool({
   name: 'draw_upsert_box',
@@ -94,10 +103,11 @@ export const drawUpsertBox = defineTool({
       angle: { type: 'number', description: 'Rotation in degrees' },
       locked: { type: 'boolean' },
       opacity: { type: 'number', description: '0–100' },
+      returnPreview: RETURN_PREVIEW_JSON_SCHEMA,
     },
     required: ['id', 'at'],
   },
-  async execute(rawArgs, store): Promise<ToolExecutionResult> {
+  async execute(rawArgs, store, deps): Promise<ToolExecutionResult> {
     const parsed = drawUpsertBoxInputSchema.safeParse(rawArgs);
     if (!parsed.success) {
       return {
@@ -164,9 +174,22 @@ export const drawUpsertBox = defineTool({
       throw err;
     }
 
+    const baseContent: ToolContentBlock[] = [
+      { type: 'text', text: `\u2713 box ${args.id} upserted` },
+    ];
+
+    const previewOpts = normalizeReturnPreview(args.returnPreview);
+    if (previewOpts === null) {
+      return { content: baseContent };
+    }
+    const preview = await requestScenePreview(deps?.previewBus, previewOpts);
+    if (preview.ok) {
+      return { content: [...baseContent, preview.image] };
+    }
     return {
       content: [
-        { type: 'text', text: `\u2713 box ${args.id} upserted` },
+        ...baseContent,
+        { type: 'text', text: `(${preview.warning})` },
       ],
     };
   },

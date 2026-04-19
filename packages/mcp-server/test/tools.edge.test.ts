@@ -4,9 +4,22 @@ import { describe, expect, it } from 'vitest';
 import type { Connector, PrimitiveId } from '@drawcast/core';
 import { SceneStore } from '../src/store.js';
 import { drawUpsertEdge } from '../src/tools/drawUpsertEdge.js';
+import type { PreviewBus, PreviewResponse } from '../src/preview-bus.js';
 
 function asId(raw: string): PrimitiveId {
   return raw as PrimitiveId;
+}
+
+function stubBus(response: PreviewResponse): PreviewBus {
+  return {
+    emitRequest(): void {},
+    awaitResponse(): Promise<PreviewResponse> {
+      return Promise.resolve(response);
+    },
+    hasSubscribers(): boolean {
+      return true;
+    },
+  };
 }
 
 describe('draw_upsert_edge', () => {
@@ -99,5 +112,48 @@ describe('draw_upsert_edge', () => {
     );
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toMatch(/locked/i);
+  });
+
+  it('appends an image block when returnPreview:true and the bus responds', async () => {
+    const store = new SceneStore();
+    const bus = stubBus({ data: 'QUFB', mimeType: 'image/png' });
+    const result = await drawUpsertEdge.execute(
+      { id: 'e', from: 'a', to: 'b', returnPreview: true },
+      store,
+      { previewBus: bus },
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(2);
+    expect(result.content[1]).toEqual({
+      type: 'image',
+      data: 'QUFB',
+      mimeType: 'image/png',
+    });
+  });
+
+  it('degrades gracefully with a warning when no bus is available', async () => {
+    const store = new SceneStore();
+    const result = await drawUpsertEdge.execute(
+      { id: 'e', from: 'a', to: 'b', returnPreview: true },
+      store,
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(2);
+    const warning = result.content[1] as { type: 'text'; text: string };
+    expect(warning.text).toMatch(/headless/i);
+    expect(store.getAllPrimitives()).toHaveLength(1);
+  });
+
+  it('skips preview entirely when the mutation itself fails', async () => {
+    const store = new SceneStore();
+    store.lock([asId('e')]);
+    const bus = stubBus({ data: 'QUFB', mimeType: 'image/png' });
+    const result = await drawUpsertEdge.execute(
+      { id: 'e', from: 'a', to: 'b', returnPreview: true },
+      store,
+      { previewBus: bus },
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content).toHaveLength(1);
   });
 });

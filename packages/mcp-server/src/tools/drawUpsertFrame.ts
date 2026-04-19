@@ -6,14 +6,22 @@ import { z } from 'zod';
 import type { Frame, PrimitiveId } from '@drawcast/core';
 import { SceneLockError } from '../store.js';
 import { lockErrorMessage } from './errors.js';
-import { defineTool, type ToolExecutionResult } from './types.js';
+import {
+  defineTool,
+  type ToolContentBlock,
+  type ToolExecutionResult,
+} from './types.js';
 import {
   POINT_JSON_SCHEMA,
   PointSchema,
+  RETURN_PREVIEW_JSON_SCHEMA,
+  ReturnPreviewSchema,
   SIZE_JSON_SCHEMA,
   SizeSchema,
   formatZodError,
+  normalizeReturnPreview,
 } from './utils.js';
+import { requestScenePreview } from './helpers/preview.js';
 
 export const drawUpsertFrameInputSchema = z.object({
   id: z.string().min(1),
@@ -25,12 +33,13 @@ export const drawUpsertFrameInputSchema = z.object({
   angle: z.number().optional(),
   locked: z.boolean().optional(),
   opacity: z.number().min(0).max(100).optional(),
+  returnPreview: ReturnPreviewSchema,
 });
 
 export type DrawUpsertFrameInput = z.infer<typeof drawUpsertFrameInputSchema>;
 
 const DESCRIPTION =
-  'Add or update a framed region that visually contains a set of child primitives. Useful for swimlanes, slide-like partitions, or labelled sub-diagrams. Children are referenced by primitive id.';
+  'Add or update a framed region that visually contains a set of child primitives. Useful for swimlanes, slide-like partitions, or labelled sub-diagrams. Children are referenced by primitive id. Pass `returnPreview: true` to receive a PNG snapshot of the scene after the upsert for visual self-review.';
 
 export const drawUpsertFrame = defineTool({
   name: 'draw_upsert_frame',
@@ -61,10 +70,11 @@ export const drawUpsertFrame = defineTool({
       angle: { type: 'number', description: 'Rotation in degrees' },
       locked: { type: 'boolean' },
       opacity: { type: 'number', description: '0-100' },
+      returnPreview: RETURN_PREVIEW_JSON_SCHEMA,
     },
     required: ['id', 'at', 'size', 'children'],
   },
-  async execute(rawArgs, store): Promise<ToolExecutionResult> {
+  async execute(rawArgs, store, deps): Promise<ToolExecutionResult> {
     const parsed = drawUpsertFrameInputSchema.safeParse(rawArgs);
     if (!parsed.success) {
       return {
@@ -109,12 +119,25 @@ export const drawUpsertFrame = defineTool({
       throw err;
     }
 
+    const baseContent: ToolContentBlock[] = [
+      {
+        type: 'text',
+        text: `\u2713 frame ${args.id} upserted (${args.children.length} children)`,
+      },
+    ];
+
+    const previewOpts = normalizeReturnPreview(args.returnPreview);
+    if (previewOpts === null) {
+      return { content: baseContent };
+    }
+    const preview = await requestScenePreview(deps?.previewBus, previewOpts);
+    if (preview.ok) {
+      return { content: [...baseContent, preview.image] };
+    }
     return {
       content: [
-        {
-          type: 'text',
-          text: `\u2713 frame ${args.id} upserted (${args.children.length} children)`,
-        },
+        ...baseContent,
+        { type: 'text', text: `(${preview.warning})` },
       ],
     };
   },

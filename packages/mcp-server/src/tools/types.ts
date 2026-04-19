@@ -44,13 +44,24 @@ export interface ToolInputJsonSchema {
 }
 
 /**
+ * A single content block in a tool result. Text blocks carry the model-
+ * facing message; image blocks carry base64-encoded image bytes so vision-
+ * capable clients (Claude Code) can display snapshots inline. The MCP SDK
+ * already accepts both shapes — keeping them in this union makes the
+ * preview/self-feedback path fully type-safe without `as unknown` casts.
+ */
+export type ToolContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; data: string; mimeType: string };
+
+/**
  * Return shape of `ToolDefinition.execute`. `isError: true` signals the MCP
  * convention that the call reached the tool but failed — the client will
  * surface the `content` text to the model rather than treating the whole
  * request as a transport error.
  */
 export interface ToolExecutionResult {
-  content: { type: 'text'; text: string }[];
+  content: ToolContentBlock[];
   isError?: boolean;
 }
 

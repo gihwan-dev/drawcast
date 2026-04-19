@@ -3,7 +3,16 @@
 // documenting each coverage primitive's shape explicitly.
 
 import { z } from 'zod';
-import { PointSchema, SizeSchema, StyleRefSchema } from './utils.js';
+import {
+  PointSchema,
+  ReturnPreviewSchema,
+  SizeSchema,
+  StyleRefSchema,
+} from './utils.js';
+
+// Each branch repeats `returnPreview` because discriminated unions can't
+// easily share additional fields via intersection — zod requires the exact
+// shape per branch to keep type-narrowing intact.
 
 export const lineInputSchema = z.object({
   kind: z.literal('line'),
@@ -17,6 +26,7 @@ export const lineInputSchema = z.object({
   angle: z.number().optional(),
   locked: z.boolean().optional(),
   opacity: z.number().min(0).max(100).optional(),
+  returnPreview: ReturnPreviewSchema,
 });
 
 export const freedrawInputSchema = z.object({
@@ -30,6 +40,7 @@ export const freedrawInputSchema = z.object({
   angle: z.number().optional(),
   locked: z.boolean().optional(),
   opacity: z.number().min(0).max(100).optional(),
+  returnPreview: ReturnPreviewSchema,
 });
 
 export const imageSourceSchema = z.discriminatedUnion('kind', [
@@ -61,6 +72,7 @@ export const imageInputSchema = z.object({
   angle: z.number().optional(),
   locked: z.boolean().optional(),
   opacity: z.number().min(0).max(100).optional(),
+  returnPreview: ReturnPreviewSchema,
 });
 
 export const embedInputSchema = z.object({
@@ -73,6 +85,7 @@ export const embedInputSchema = z.object({
   angle: z.number().optional(),
   locked: z.boolean().optional(),
   opacity: z.number().min(0).max(100).optional(),
+  returnPreview: ReturnPreviewSchema,
 });
 
 export type LineInput = z.infer<typeof lineInputSchema>;

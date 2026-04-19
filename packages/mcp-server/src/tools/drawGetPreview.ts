@@ -13,12 +13,14 @@
 // The tool itself doesn't know about HTTP — it talks to a `PreviewBus`
 // which the SSE transport provides. In stdio mode no bus is injected and
 // we return an explicit `isError` telling the model to fall back on
-// `draw_export` for the JSON scene.
+// `draw_export` for the JSON scene. The round-trip logic lives in the
+// shared `requestScenePreview` helper so the upsert tools' `returnPreview`
+// option can reuse it.
 
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { defineTool, type ToolExecutionResult } from './types.js';
 import { formatZodError } from './utils.js';
+import { requestScenePreview } from './helpers/preview.js';
 
 export const drawGetPreviewInputSchema = z.object({
   format: z.enum(['png', 'jpeg']).default('png'),
@@ -35,31 +37,7 @@ export const drawGetPreviewInputSchema = z.object({
 export type DrawGetPreviewInput = z.infer<typeof drawGetPreviewInputSchema>;
 
 const DESCRIPTION =
-  'Request a PNG preview of the current scene from the connected app. Returns base64-encoded image data. Requires the Drawcast desktop app to be running (headless MCP mode cannot generate previews — use draw_export for JSON instead).';
-
-/**
- * Tool return shape. We emit an MCP `image` content block whose `data` is
- * the base64 payload the app uploaded. Clients that can render images
- * (Claude Code with vision) surface it directly; text-only clients see
- * the fallback string below.
- */
-interface ImageContentBlock {
-  type: 'image';
-  data: string;
-  mimeType: string;
-}
-
-interface TextContentBlock {
-  type: 'text';
-  text: string;
-}
-
-type PreviewContentBlock = ImageContentBlock | TextContentBlock;
-
-interface PreviewToolResult {
-  content: PreviewContentBlock[];
-  isError?: boolean;
-}
+  'Render the current scene to PNG/JPEG and return it as a base64 image block for visual self-review. Use this liberally while drawing multi-step diagrams — after each batch of upserts, call this tool to verify layout and catch issues that scene JSON does not expose: overlapping primitives, off-grid alignment, cramped labels, edge routing errors, unbalanced whitespace, wrong arrow heads. Prefer this over re-reading the scene JSON whenever the problem is geometric rather than structural. Requires the Drawcast desktop app to be running; in headless MCP mode this is unavailable — use draw_export to retrieve JSON instead.';
 
 export const drawGetPreview = defineTool({
   name: 'draw_get_preview',
@@ -71,20 +49,22 @@ export const drawGetPreview = defineTool({
       format: {
         type: 'string',
         enum: ['png', 'jpeg'],
-        description: 'Image format. PNG is lossless; JPEG is smaller.',
+        description:
+          'Image format. PNG is lossless (recommended for self-review); JPEG is smaller (user-share).',
       },
       scale: {
         type: 'number',
         minimum: 1,
         maximum: 4,
-        description: 'Render scale factor (1–4). 2 is the Retina default.',
+        description:
+          'Render scale factor (1-4). Default 2 (Retina). Bump to 3+ when inspecting small labels.',
       },
       timeoutMs: {
         type: 'number',
         minimum: 1000,
         maximum: 30000,
         description:
-          'How long to wait for the app to reply, in milliseconds.',
+          'How long to wait for the app to reply, in milliseconds. Larger scenes need more time.',
       },
     },
     required: [],
@@ -104,82 +84,20 @@ export const drawGetPreview = defineTool({
     }
     const { format, scale, timeoutMs } = parsed.data;
 
-    const bus = deps?.previewBus;
-    if (bus === undefined) {
-      // Standalone MCP mode: the CLI is talking to a bare stdio server
-      // with no app attached. Preview requires a browser runtime to
-      // render the canvas, so there is no fallback short of failing.
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: 'Preview not available in headless MCP mode. The Drawcast desktop app must be running to render a PNG. Use draw_export to retrieve the scene as JSON instead.',
-          },
-        ],
-      };
+    const result = await requestScenePreview(deps?.previewBus, {
+      format,
+      scale,
+      timeoutMs,
+    });
+    if (result.ok) {
+      return { content: [result.image] };
     }
-
-    if (!bus.hasSubscribers()) {
-      // Bus exists but nobody's listening on /events — the sidecar is up
-      // but the desktop app hasn't opened its EventSource yet (or it
-      // crashed). Fail fast so the model doesn't sit on the 10 s
-      // timeout.
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: 'Preview requested but no app is currently subscribed to the event stream. Launch the Drawcast app and retry.',
-          },
-        ],
-      };
-    }
-
-    const requestId = randomUUID();
-    bus.emitRequest(requestId, format, scale);
-
-    let response;
-    try {
-      response = await bus.awaitResponse(requestId, timeoutMs);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: `Preview request timed out after ${timeoutMs}ms: ${msg}`,
-          },
-        ],
-      };
-    }
-
-    if (response.data.length === 0) {
-      // The app acknowledged the round-trip but couldn't render. Flag as
-      // error so the model doesn't hand the user an empty image.
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: 'Preview render failed: the app returned an empty image payload.',
-          },
-        ],
-      };
-    }
-
-    const result: PreviewToolResult = {
-      content: [
-        {
-          type: 'image',
-          data: response.data,
-          mimeType: response.mimeType,
-        },
-      ],
+    // For `draw_get_preview`, the preview IS the product — a missing image
+    // is a hard failure. Upsert tools treat the same warning as a soft
+    // degradation instead.
+    return {
+      isError: true,
+      content: [{ type: 'text', text: result.warning }],
     };
-    // ToolExecutionResult's content type is narrowed to text-only in PR #9;
-    // image blocks are a permissive extension the MCP SDK already accepts.
-    return result as unknown as ToolExecutionResult;
   },
 });
