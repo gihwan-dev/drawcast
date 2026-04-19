@@ -15,7 +15,6 @@ import type {
   ExcalidrawRectangleElement,
   ExcalidrawTextElement,
   FileId,
-  FixedPointBinding,
 } from '../src/types/excalidraw.js';
 import type {
   Connector,
@@ -49,7 +48,7 @@ function text(overrides: Partial<ExcalidrawTextElement> = {}): ExcalidrawTextEle
     verticalAlign: overrides.verticalAlign ?? 'top',
     containerId: overrides.containerId ?? null,
     lineHeight: overrides.lineHeight ?? 1.25,
-    autoResize: overrides.autoResize ?? true,
+    baseline: overrides.baseline ?? 16,
     ...overrides,
   };
 }
@@ -66,11 +65,6 @@ function arrow(overrides: Partial<ExcalidrawArrowElement> = {}): ExcalidrawArrow
     endBinding: null,
     startArrowhead: null,
     endArrowhead: 'arrow',
-    elbowed: false,
-    fixedSegments: null,
-    startIsSpecial: false,
-    endIsSpecial: false,
-    polygon: false,
     ...overrides,
   };
 }
@@ -196,45 +190,22 @@ describe('C9 — opacity range', () => {
   });
 });
 
-describe('C10 — elbow arrow binding', () => {
-  it('flags an elbow arrow whose binding lacks fixedPoint', () => {
+describe('C10 — elbow arrow binding (reserved for 0.18+)', () => {
+  // Excalidraw 0.17.x has no elbow-arrow concept. The check currently
+  // no-ops; once we bump the pinned version it should reactivate. The
+  // placeholder below pins the contract so regressions are visible.
+  it('no-ops on 0.17.x schema — legal to bind without fixedPoint', () => {
     const target = rect({
       id: 'r1',
       boundElements: [{ type: 'arrow', id: 'a1' }],
     });
     const a = arrow({
       id: 'a1',
-      elbowed: true,
-      fixedSegments: [],
       startBinding: { elementId: 'r1', focus: 0, gap: 1 },
     });
     const report = runCompliance([target, a], {});
-    expect(report.passed).toBe(false);
     const c10 = report.issues.filter((i) => i.code === 'C10');
-    expect(c10.some((i) => i.message.includes('missing fixedPoint'))).toBe(true);
-  });
-
-  it('warns when fixedPoint is exactly [0.5, 0.5] (P17 oscillation)', () => {
-    const target = rect({
-      id: 'r1',
-      boundElements: [{ type: 'arrow', id: 'a1' }],
-    });
-    const fp: FixedPointBinding = {
-      elementId: 'r1',
-      focus: 0,
-      gap: 1,
-      fixedPoint: [0.5, 0.5],
-    };
-    const a = arrow({
-      id: 'a1',
-      elbowed: true,
-      fixedSegments: [],
-      startBinding: fp,
-    });
-    const report = runCompliance([target, a], {});
-    expect(report.passed).toBe(false);
-    const c10 = report.issues.filter((i) => i.code === 'C10');
-    expect(c10.some((i) => i.message.includes('[0.5, 0.5]'))).toBe(true);
+    expect(c10).toEqual([]);
   });
 });
 

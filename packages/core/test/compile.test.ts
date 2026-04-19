@@ -20,7 +20,6 @@ import type {
   ExcalidrawFrameElement,
   ExcalidrawRectangleElement,
   ExcalidrawTextElement,
-  FixedPointBinding,
 } from '../src/types/excalidraw.js';
 
 function makeScene(primitives: Primitive[]): Scene {
@@ -75,13 +74,20 @@ describe('compile — LabelBox with text', () => {
     expect(text.containerId).toBe(rect.id);
     expect(rect.boundElements).toContainEqual({ type: 'text', id: text.id });
 
-    // Text is wrapped -> container-bound, so autoResize must be false (P4).
-    expect(text.autoResize).toBe(false);
+    // Text preserves originalText verbatim.
     expect(text.originalText).toBe('Hello');
+    // `baseline` is required for Excalidraw 0.17.x to render the glyph.
+    expect(text.baseline).toBeGreaterThan(0);
 
     // Rectangle sized around the label center (auto fit).
     expect(rect.width).toBeGreaterThan(0);
     expect(rect.height).toBeGreaterThan(0);
+
+    // Text sits inside the rectangle (centre-aligned both axes).
+    expect(text.x).toBeGreaterThanOrEqual(rect.x);
+    expect(text.y).toBeGreaterThanOrEqual(rect.y);
+    expect(text.x + text.width).toBeLessThanOrEqual(rect.x + rect.width);
+    expect(text.y + text.height).toBeLessThanOrEqual(rect.y + rect.height);
   });
 });
 
@@ -138,13 +144,17 @@ describe('compile — Connector between two LabelBoxes', () => {
       expect.arrayContaining([{ type: 'arrow', id: arrow.id }]),
     );
 
-    // Straight arrow -> elbowed:false.
-    expect(arrow.elbowed).toBe(false);
+    // Both bindings carry focus:0, gap>0 so Excalidraw snaps the
+    // endpoints to the shape boundary on first paint.
+    expect(arrow.startBinding?.focus).toBe(0);
+    expect(arrow.endBinding?.focus).toBe(0);
+    expect(arrow.startBinding?.gap ?? 0).toBeGreaterThan(0);
+    expect(arrow.endBinding?.gap ?? 0).toBeGreaterThan(0);
   });
 });
 
-describe('compile — elbow connector (P17)', () => {
-  it('produces elbowed arrow with FixedPointBinding fixedPoint off-center', () => {
+describe('compile — elbow connector (0.17.x)', () => {
+  it('emits a standard PointBinding (no elbow-specific fields) in 0.17.x', () => {
     const boxA: LabelBox = {
       kind: 'labelBox',
       id: 'a' as PrimitiveId,
@@ -171,17 +181,14 @@ describe('compile — elbow connector (P17)', () => {
       result.elements,
       (el): el is ExcalidrawArrowElement => el.type === 'arrow',
     );
-    expect(arrow.elbowed).toBe(true);
-
-    // Both bindings must be FixedPointBinding (has fixedPoint) — P17.
-    const sb = arrow.startBinding as FixedPointBinding;
-    const eb = arrow.endBinding as FixedPointBinding;
-    expect(sb.fixedPoint).toEqual([0.4999, 0.5001]);
-    expect(eb.fixedPoint).toEqual([0.4999, 0.5001]);
-
-    // Must NOT be the oscillation-prone exact center.
-    expect(sb.fixedPoint[0]).not.toBe(0.5);
-    expect(sb.fixedPoint[1]).not.toBe(0.5);
+    // Elbow routing is simulated via the points array, but the
+    // `elbowed`/`fixedSegments`/`fixedPoint` fields don't exist in 0.17.x.
+    expect(arrow.startBinding?.focus).toBe(0);
+    expect(arrow.endBinding?.focus).toBe(0);
+    expect((arrow.startBinding as Record<string, unknown>).fixedPoint)
+      .toBeUndefined();
+    // 4-point L-shape: start -> horizontal -> vertical -> end.
+    expect(arrow.points.length).toBe(4);
   });
 });
 

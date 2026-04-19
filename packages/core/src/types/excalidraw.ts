@@ -25,14 +25,15 @@ export interface BoundElement {
   id: string;
 }
 
-/** Binding used by non-elbow arrows. */
+/** Binding used by arrows. Excalidraw 0.17.x only understands this shape;
+ * FixedPointBinding (with `fixedPoint`) lands in 0.18+. */
 export interface PointBinding {
   elementId: string;
   focus: number;
   gap: number;
 }
 
-/** Binding used by elbow arrows. `fixedPoint` is AABB-normalized [0..1]. */
+/** @deprecated 0.17.x does not recognise `fixedPoint`; use PointBinding. */
 export interface FixedPointBinding extends PointBinding {
   fixedPoint: readonly [number, number];
 }
@@ -111,8 +112,11 @@ export interface ExcalidrawTextElement extends ExcalidrawElementBase {
   verticalAlign: 'top' | 'middle' | 'bottom';
   containerId: string | null;
   lineHeight: number;
-  autoResize: boolean;
-  baseline?: number;
+  // `baseline` is required by Excalidraw 0.17.x's restore(); omitting it
+  // leaves the text invisible because restore substitutes NaN for the
+  // glyph-vertical offset. 0.18+ derives it from font metrics, but the
+  // pinned version here does not.
+  baseline: number;
 }
 
 // -----------------------------------------------------------------------------
@@ -123,15 +127,10 @@ export interface ExcalidrawArrowElement extends ExcalidrawElementBase {
   type: 'arrow';
   points: LocalPoint[];
   lastCommittedPoint: LocalPoint | null;
-  startBinding: PointBinding | FixedPointBinding | null;
-  endBinding: PointBinding | FixedPointBinding | null;
+  startBinding: PointBinding | null;
+  endBinding: PointBinding | null;
   startArrowhead: Arrowhead | null;
   endArrowhead: Arrowhead | null;
-  elbowed: boolean;
-  fixedSegments: unknown[] | null;
-  startIsSpecial: boolean;
-  endIsSpecial: boolean;
-  polygon: boolean;
 }
 
 export interface ExcalidrawLineElement extends ExcalidrawElementBase {
@@ -140,7 +139,6 @@ export interface ExcalidrawLineElement extends ExcalidrawElementBase {
   lastCommittedPoint: LocalPoint | null;
   startArrowhead: Arrowhead | null;
   endArrowhead: Arrowhead | null;
-  polygon: boolean;
 }
 
 // -----------------------------------------------------------------------------

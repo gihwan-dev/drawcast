@@ -5,8 +5,12 @@
 //   P3  — points[0] must be [0,0] after normalisation; (x,y) captures the
 //         pre-normalisation start point
 //   P13 — at least 2 points always
-//   P17 — elbow arrows use FixedPointBinding with fixedPoint [0.4999, 0.5001]
 //   P18 — orphan references degrade to a free arrow with a warning
+//
+// Excalidraw 0.17.x baseline: no elbow-arrow fields (`elbowed`,
+// `fixedSegments`, `fixedPoint`, …), no `polygon`, no `FixedPointBinding`.
+// `PointBinding` is metadata for later bound-element updates; first paint uses
+// the arrow's own `x`, `y`, and `points`, so we emit boundary coordinates.
 
 import type { Connector, Point, PrimitiveId, Radians } from '../primitives.js';
 import { baseElementFields } from '../utils/baseElementFields.js';
@@ -15,52 +19,60 @@ import { getLineHeight, measureText } from '../measure.js';
 import type {
   ExcalidrawArrowElement,
   ExcalidrawTextElement,
-  FixedPointBinding,
   PointBinding,
 } from '../types/excalidraw.js';
 import type { CompileContext, PrimitiveRecord } from '../compile/context.js';
 import { resolveEdgeStyle } from '../compile/resolveStyle.js';
 import { normalizePoints } from './shared/points.js';
 
-// Elbow arrows oscillate when fixedPoint == [0.5, 0.5] (issue #9197).
-// Nudge slightly off-centre; Excalidraw snaps to the correct face on first
-// interaction. See P17.
-const ELBOW_FIXED_POINT: readonly [number, number] = [0.4999, 0.5001];
-// Default gap between arrow endpoint and shape boundary.
+// Matches Excalidraw 0.17.x's minimum gap from calculateFocusAndGap().
 const DEFAULT_GAP = 1;
 
 function centerOfRecord(record: PrimitiveRecord): Point {
-  return [
-    record.bbox.x + record.bbox.w / 2,
-    record.bbox.y + record.bbox.h / 2,
-  ];
+  return [record.bbox.x + record.bbox.w / 2, record.bbox.y + record.bbox.h / 2];
 }
 
 function isPoint(ref: PrimitiveId | Point): ref is Point {
   return typeof ref !== 'string';
 }
 
-/**
- * Ray from the record's centre towards `towards` intersected with the
- * record's axis-aligned bbox. Used so arrow endpoints land on the near
- * edge of a bindable shape rather than its centre — matches Excalidraw's
- * native "connect two shapes" visual behaviour. Excalidraw's binding
- * still owns re-anchoring during drag; this only fixes the initial paint.
- */
-function boundaryPoint(record: PrimitiveRecord, towards: Point): Point {
-  const cx = record.bbox.x + record.bbox.w / 2;
-  const cy = record.bbox.y + record.bbox.h / 2;
-  const dx = towards[0] - cx;
-  const dy = towards[1] - cy;
+function rotatePoint(point: Point, center: Point, angle: number): Point {
+  if (angle === 0) return [point[0], point[1]];
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const dx = point[0] - center[0];
+  const dy = point[1] - center[1];
+  return [center[0] + dx * cos - dy * sin, center[1] + dx * sin + dy * cos];
+}
+
+function boundaryPoint(record: PrimitiveRecord, ctx: CompileContext, towards: Point): Point {
+  const element = ctx.getElementById(record.primaryId)!;
+  const center = centerOfRecord(record);
+  const localTowards = rotatePoint(towards, center, -element.angle);
+  const dx = localTowards[0] - center[0];
+  const dy = localTowards[1] - center[1];
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
-  if (absDx < 1e-6 && absDy < 1e-6) return [cx, cy];
+  if (absDx < 1e-6 && absDy < 1e-6) return center;
+
   const halfW = record.bbox.w / 2;
   const halfH = record.bbox.h / 2;
-  const tx = absDx > 1e-6 ? halfW / absDx : Number.POSITIVE_INFINITY;
-  const ty = absDy > 1e-6 ? halfH / absDy : Number.POSITIVE_INFINITY;
-  const t = Math.min(tx, ty);
-  return [cx + dx * t, cy + dy * t];
+  let t: number;
+  switch (element.type) {
+    case 'diamond':
+      t = 1 / (absDx / halfW + absDy / halfH);
+      break;
+    case 'ellipse':
+      t = 1 / Math.sqrt((dx * dx) / (halfW * halfW) + (dy * dy) / (halfH * halfH));
+      break;
+    default:
+      t = Math.min(
+        absDx > 1e-6 ? halfW / absDx : Number.POSITIVE_INFINITY,
+        absDy > 1e-6 ? halfH / absDy : Number.POSITIVE_INFINITY,
+      );
+  }
+
+  return rotatePoint([center[0] + dx * t, center[1] + dy * t], center, element.angle);
 }
 
 interface ResolvedEndpointCenter {
@@ -138,8 +150,7 @@ function buildRawPoints(
 function buildBinding(
   ref: PrimitiveId | Point,
   ctx: CompileContext,
-  isElbow: boolean,
-): { binding: PointBinding | FixedPointBinding | null; ownerId: string | null } {
+): { binding: PointBinding | null; ownerId: string | null } {
   if (isPoint(ref)) return { binding: null, ownerId: null };
   const record = ctx.getRecord(ref);
   if (!record) return { binding: null, ownerId: null };
@@ -147,15 +158,6 @@ function buildBinding(
   // Sticky and coverage primitives are intentionally excluded.
   if (record.kind !== 'labelBox' && record.kind !== 'frame') {
     return { binding: null, ownerId: null };
-  }
-  if (isElbow) {
-    const fixed: FixedPointBinding = {
-      elementId: record.primaryId,
-      focus: 0,
-      gap: DEFAULT_GAP,
-      fixedPoint: ELBOW_FIXED_POINT,
-    };
-    return { binding: fixed, ownerId: record.primaryId };
   }
   return {
     binding: { elementId: record.primaryId, focus: 0, gap: DEFAULT_GAP },
@@ -166,34 +168,19 @@ function buildBinding(
 export function emitConnector(p: Connector, ctx: CompileContext): void {
   const style = resolveEdgeStyle(p.style, ctx.theme, p.id, ctx);
   const routing = p.routing ?? 'straight';
-  const isElbow = routing === 'elbow';
 
-  // 1) Endpoints -> raw scene-coordinate points. Each endpoint that is a
-  //    reference to a bindable shape is anchored to the bbox edge nearest
-  //    the opposite endpoint, so the arrow starts/ends on the shape's
-  //    boundary rather than through its centre.
+  // 1) Endpoints -> scene-coordinate points. Bound references are anchored to
+  //    the boundary now because Excalidraw 0.17.x renders exactly these points.
   const fromRes = resolveCenter(p.from, ctx, p.id, 'from');
   const toRes = resolveCenter(p.to, ctx, p.id, 'to');
-  const start = fromRes.record
-    ? boundaryPoint(fromRes.record, toRes.center)
-    : fromRes.center;
-  const end = toRes.record
-    ? boundaryPoint(toRes.record, fromRes.center)
-    : toRes.center;
+  const start = fromRes.record ? boundaryPoint(fromRes.record, ctx, toRes.center) : fromRes.center;
+  const end = toRes.record ? boundaryPoint(toRes.record, ctx, fromRes.center) : toRes.center;
   const rawPoints = buildRawPoints(start, end, routing);
   const { points, width, height } = normalizePoints(rawPoints);
 
   // 2) Bindings
-  const { binding: startBinding, ownerId: startOwner } = buildBinding(
-    p.from,
-    ctx,
-    isElbow,
-  );
-  const { binding: endBinding, ownerId: endOwner } = buildBinding(
-    p.to,
-    ctx,
-    isElbow,
-  );
+  const { binding: startBinding, ownerId: startOwner } = buildBinding(p.from, ctx);
+  const { binding: endBinding, ownerId: endOwner } = buildBinding(p.to, ctx);
 
   const arrowId = newElementId();
   const base = baseElementFields({
@@ -226,12 +213,6 @@ export function emitConnector(p: Connector, ctx: CompileContext): void {
     endBinding,
     startArrowhead: p.arrowhead?.start ?? null,
     endArrowhead: p.arrowhead?.end ?? 'arrow',
-    elbowed: isElbow,
-    // Elbow arrows expect [] (not null) so Excalidraw's editor can populate it.
-    fixedSegments: isElbow ? [] : null,
-    startIsSpecial: false,
-    endIsSpecial: false,
-    polygon: false,
   };
 
   ctx.emit(arrow);
@@ -284,7 +265,7 @@ export function emitConnector(p: Connector, ctx: CompileContext): void {
       verticalAlign: 'middle',
       containerId: arrowId,
       lineHeight,
-      autoResize: true,
+      baseline: Math.round(fontSize * lineHeight * 0.8),
     };
 
     ctx.emit(label);

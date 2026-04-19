@@ -12,6 +12,7 @@ import {
   type ExternalStoreAdapter,
   type ThreadMessageLike,
 } from '@assistant-ui/react';
+import { useMemo } from 'react';
 import {
   sendChat,
   type AssistantContentBlock,
@@ -66,7 +67,16 @@ function convertAssistantContent(
   const parts: ThreadContentPart[] = [];
   for (const b of blocks) {
     if (b.type === 'text') {
+      // Drop empty text blocks — Claude streams these around tool calls and
+      // they'd otherwise render as ghost bubbles (see the B1 empty-box bug).
+      if (b.text.length === 0) continue;
       parts.push({ type: 'text', text: b.text });
+      continue;
+    }
+    if (b.type === 'thinking') {
+      const text = b.thinking ?? '';
+      if (text.length === 0) continue;
+      parts.push({ type: 'reasoning', text });
       continue;
     }
     if (b.type === 'tool_use') {
@@ -219,19 +229,48 @@ async function fallbackOnNew(message: AppendMessage): Promise<void> {
   }
 }
 
+/**
+ * True if this assistant message has at least one render-worthy content
+ * block. Claude emits empty assistant snapshots around tool calls that
+ * would otherwise render as ghost bubbles. Filtering at the adapter level
+ * is simpler than juggling empty-part rendering inside assistant-ui's
+ * message primitive.
+ */
+function assistantMessageHasRenderableContent(m: ChatMessage): boolean {
+  if (m.role !== 'assistant') return true;
+  const blocks = m.content as AssistantContentBlock[];
+  for (const b of blocks) {
+    if (b.type === 'text' && b.text.trim().length > 0) return true;
+    if (b.type === 'thinking' && (b.thinking ?? '').trim().length > 0) return true;
+    if (b.type === 'tool_use') return true;
+    if (b.type === 'tool_result') return true;
+  }
+  return false;
+}
+
 export function useDrawcastRuntime() {
-  const messages = useChatStore((s) => s.messages);
+  const rawMessages = useChatStore((s) => s.messages);
   const isRunning = useChatStore((s) => s.isStreaming);
 
-  const adapter: ExternalStoreAdapter<ChatMessage> = {
-    messages,
-    isRunning,
-    convertMessage,
-    onNew: fallbackOnNew,
-    onCancel: async () => {
-      await useChatStore.getState().cancelTurn();
-    },
-  };
+  const messages = useMemo(
+    () => rawMessages.filter(assistantMessageHasRenderableContent),
+    [rawMessages],
+  );
+  const lastMessage = messages[messages.length - 1];
+  const runtimeIsRunning = isRunning && lastMessage?.role === 'assistant';
+
+  const adapter = useMemo<ExternalStoreAdapter<ChatMessage>>(
+    () => ({
+      messages,
+      isRunning: runtimeIsRunning,
+      convertMessage,
+      onNew: fallbackOnNew,
+      onCancel: async () => {
+        await useChatStore.getState().cancelTurn();
+      },
+    }),
+    [messages, runtimeIsRunning],
+  );
 
   return useExternalStoreRuntime(adapter);
 }

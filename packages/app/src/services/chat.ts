@@ -21,6 +21,11 @@ export type UserContentBlock =
 
 export type AssistantContentBlock =
   | { type: 'text'; text: string }
+  // Extended thinking. Claude emits these when `-a thinking` or the managed
+  // agent default is on; we surface them as collapsed "reasoning" parts so
+  // the user sees Claude's chain-of-thought without it hijacking the
+  // transcript layout.
+  | { type: 'thinking'; thinking: string; signature?: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | {
       type: 'tool_result';

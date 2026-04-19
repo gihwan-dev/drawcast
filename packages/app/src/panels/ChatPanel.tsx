@@ -13,6 +13,7 @@ import {
   AssistantRuntimeProvider,
   MessagePrimitive,
   ThreadPrimitive,
+  type EmptyMessagePartComponent,
 } from '@assistant-ui/react';
 import {
   useCallback,
@@ -31,6 +32,7 @@ import { saveUploads } from '../services/uploads.js';
 import { useChatStore, type Attachment } from '../store/chatStore.js';
 import { useToastStore } from '../store/toastStore.js';
 import { ToolCallUI } from './chat/ToolCallUI.js';
+import { ReasoningUI } from './chat/ReasoningUI.js';
 import { useDrawcastRuntime } from './chat/runtime.js';
 
 export function ChatPanel(): JSX.Element {
@@ -147,6 +149,7 @@ function AssistantMessage(): JSX.Element {
       <MessagePrimitive.Parts
         components={{
           Text: TextPart,
+          Reasoning: ReasoningUI,
           Image: ImagePart,
           File: FilePartAssistant,
           Empty: StreamingCursor,
@@ -189,7 +192,8 @@ function FilePartAssistant({ mimeType }: { mimeType: string }): JSX.Element {
   );
 }
 
-function StreamingCursor(): JSX.Element {
+const StreamingCursor: EmptyMessagePartComponent = ({ status }) => {
+  if (status.type !== 'running') return null;
   return (
     <span
       aria-label="streaming"
@@ -198,7 +202,7 @@ function StreamingCursor(): JSX.Element {
       ▍
     </span>
   );
-}
+};
 
 // -----------------------------------------------------------------------------
 // Composer — text input + attachment chips + send. Also owns the drag-drop

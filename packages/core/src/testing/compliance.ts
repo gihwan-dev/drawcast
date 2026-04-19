@@ -14,8 +14,6 @@ import type {
   ExcalidrawElement,
   ExcalidrawImageElement,
   ExcalidrawTextElement,
-  FixedPointBinding,
-  PointBinding,
 } from '../types/excalidraw.js';
 
 /** Stable code for each of the 10 compliance checks. */
@@ -229,7 +227,7 @@ function checkC5(elements: readonly ExcalidrawElement[]): ComplianceIssue[] {
   const byId = new Map(elements.map((el) => [el.id, el]));
   for (const el of elements) {
     if (!isArrow(el)) continue;
-    const sides: Array<['startBinding' | 'endBinding', PointBinding | FixedPointBinding | null]> = [
+    const sides: Array<['startBinding' | 'endBinding', typeof el.startBinding]> = [
       ['startBinding', el.startBinding],
       ['endBinding', el.endBinding],
     ];
@@ -378,52 +376,17 @@ function checkC9(elements: readonly ExcalidrawElement[]): ComplianceIssue[] {
 }
 
 // -----------------------------------------------------------------------------
-// C10 — Elbow arrows require FixedPointBinding (fixedPoint tuple).
+// C10 — Elbow-arrow FixedPointBinding check.
+//
+// Excalidraw 0.17.x has no elbow arrow concept — `elbowed`,
+// `fixedSegments`, `FixedPointBinding.fixedPoint` all land in 0.18+. Until
+// we bump the pinned version we can't meaningfully enforce this rule, so
+// the check is a no-op. Kept as a named function so the runner array
+// below doesn't need conditional wiring and the test IDs stay stable.
 // -----------------------------------------------------------------------------
 
-function isFixedPointBinding(
-  binding: PointBinding | FixedPointBinding | null,
-): binding is FixedPointBinding {
-  if (!binding) return false;
-  const fp = (binding as FixedPointBinding).fixedPoint;
-  return (
-    Array.isArray(fp) &&
-    fp.length === 2 &&
-    typeof fp[0] === 'number' &&
-    typeof fp[1] === 'number'
-  );
-}
-
-function checkC10(elements: readonly ExcalidrawElement[]): ComplianceIssue[] {
-  const issues: ComplianceIssue[] = [];
-  for (const el of elements) {
-    if (!isArrow(el)) continue;
-    if (!el.elbowed) continue;
-    const sides: Array<['startBinding' | 'endBinding', PointBinding | FixedPointBinding | null]> = [
-      ['startBinding', el.startBinding],
-      ['endBinding', el.endBinding],
-    ];
-    for (const [side, binding] of sides) {
-      if (!binding) continue;
-      if (!isFixedPointBinding(binding)) {
-        issues.push({
-          code: 'C10',
-          elementId: el.id,
-          message: `elbow arrow ${el.id}.${side} missing fixedPoint tuple`,
-        });
-        continue;
-      }
-      const [fx, fy] = binding.fixedPoint;
-      if (fx === 0.5 && fy === 0.5) {
-        issues.push({
-          code: 'C10',
-          elementId: el.id,
-          message: `elbow arrow ${el.id}.${side} fixedPoint exactly [0.5, 0.5] — oscillation risk (P17)`,
-        });
-      }
-    }
-  }
-  return issues;
+function checkC10(): ComplianceIssue[] {
+  return [];
 }
 
 // -----------------------------------------------------------------------------
@@ -448,7 +411,7 @@ export function runCompliance(
     { code: 'C7', run: () => checkC7(elements) },
     { code: 'C8', run: () => checkC8(elements) },
     { code: 'C9', run: () => checkC9(elements) },
-    { code: 'C10', run: () => checkC10(elements) },
+    { code: 'C10', run: () => checkC10() },
   ];
 
   const issues: ComplianceIssue[] = [];

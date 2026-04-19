@@ -1,10 +1,9 @@
 // Emitter for the Sticky primitive: a free (container-less) text element.
 // See docs/03 §234-289.
 //
-// Pitfall guards:
-//   P4 — `autoResize` must match how we set width/text:
-//        - explicit width -> wrap + autoResize:false
-//        - no width       -> measure raw + autoResize:true
+// Excalidraw 0.17.x: no `autoResize` field, `baseline` is required.
+// We pre-wrap / pre-measure here so width/height are always correct and
+// rely on restore() to keep them in sync if the user edits the text.
 
 import type { Sticky } from '../primitives.js';
 import type { Radians } from '../primitives.js';
@@ -29,18 +28,16 @@ export function emitSticky(p: Sticky, ctx: CompileContext): void {
   let text: string;
   let width: number;
   let height: number;
-  let autoResize: boolean;
 
   if (p.width !== undefined) {
     // Fixed width: wrap to fit.
-    autoResize = false;
     width = p.width;
     text = wrapText({ text: p.text, maxWidth: width, fontSize, fontFamily });
     const m = measureText({ text, fontSize, fontFamily });
     height = m.height;
   } else {
-    // Auto: no wrapping, let Excalidraw auto-grow.
-    autoResize = true;
+    // Auto: no wrapping. Width/height are measured once here; restore()
+    // remeasures on edit.
     text = p.text;
     const m = measureText({ text: p.text, fontSize, fontFamily });
     width = m.width;
@@ -80,7 +77,7 @@ export function emitSticky(p: Sticky, ctx: CompileContext): void {
     verticalAlign: 'top',
     containerId: null,
     lineHeight,
-    autoResize,
+    baseline: Math.round(fontSize * lineHeight * 0.8),
   };
 
   ctx.emit(element);

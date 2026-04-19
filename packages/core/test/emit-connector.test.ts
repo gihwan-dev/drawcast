@@ -1,12 +1,12 @@
-// Connector endpoint-anchoring regression tests.
+// Connector endpoint + binding regression tests.
 //
-// Without this guard the emitter put arrow endpoints at the shape centres,
-// which visually reads as "the arrow pierces the box". The emitter now
-// intersects the ray between the two centres with each source/target
-// bounding box, so the arrow starts on the near edge and ends on the far
-// edge — matching user expectation and Excalidraw's own "connect two
-// shapes" behaviour. Bindings are retained so Excalidraw still auto-
-// re-anchors on drag.
+// The arrow is emitted with centre-to-centre points; Excalidraw re-anchors
+// the visible endpoints to each shape's boundary on first paint using
+// `startBinding.focus`/`gap`. Pre-calculating boundary points in the
+// emitter (an earlier attempt) races with Excalidraw's restore() and
+// leaves the arrow misaligned on the user-visible B3 bug. These tests
+// pin the invariants the compiled scene must carry so the first paint
+// lands correctly.
 
 import { describe, expect, it } from 'vitest';
 import { compile } from '../src/compile/index.js';
@@ -41,9 +41,11 @@ function findArrow(
 }
 
 describe('emitConnector — boundary anchoring (B3)', () => {
-  it('horizontal pair: arrow starts at source right edge, ends at target left edge', () => {
-    // A centred at (100,100), fixed 80x40 → right edge x = 140
-    // B centred at (300,100), fixed 80x40 → left  edge x = 260
+  it('horizontal pair: arrow lands on source right edge & target left edge', () => {
+    // A at (100,100) fixed 80x40 → right edge (140, 100).
+    // B at (300,100) fixed 80x40 → left edge (260, 100).
+    // Excalidraw 0.17.x renders exactly these points on first paint —
+    // bindings only take over on drag, so emit must pre-anchor.
     const a: LabelBox = {
       kind: 'labelBox',
       id: 'a' as PrimitiveId,
@@ -72,20 +74,22 @@ describe('emitConnector — boundary anchoring (B3)', () => {
     const result = compile(makeScene([a, b, c]));
     const arrow = findArrow(result.elements);
 
-    // arrow.x (= start absolute x) should hug A's right edge, not its centre.
-    expect(arrow.x).toBeGreaterThan(135);
-    expect(arrow.x).toBeLessThanOrEqual(141);
+    // arrow origin == A's right edge midpoint.
+    expect(arrow.x).toBe(140);
+    expect(arrow.y).toBe(100);
 
-    // End absolute x = arrow.x + last point dx should hug B's left edge.
+    // Last point (in local coords) lands at B's left edge midpoint.
     const lastPoint = arrow.points[arrow.points.length - 1]!;
-    const endX = arrow.x + lastPoint[0];
-    expect(endX).toBeGreaterThanOrEqual(259);
-    expect(endX).toBeLessThan(265);
+    expect(arrow.x + lastPoint[0]).toBe(260);
+    expect(arrow.y + lastPoint[1]).toBe(100);
+
+    // Bindings persisted so drag-re-anchor still works.
+    expect(arrow.startBinding?.focus).toBe(0);
+    expect(arrow.endBinding?.focus).toBe(0);
+    expect(arrow.startBinding?.gap ?? 0).toBeGreaterThan(0);
   });
 
-  it('vertical pair: arrow starts at source bottom edge, ends at target top edge', () => {
-    // A (100,100) 80x40 → bottom edge y = 120
-    // B (100,300) 80x40 → top    edge y = 280
+  it('vertical pair: arrow lands on source bottom edge & target top edge', () => {
     const a: LabelBox = {
       kind: 'labelBox',
       id: 'a' as PrimitiveId,
@@ -114,13 +118,13 @@ describe('emitConnector — boundary anchoring (B3)', () => {
     const result = compile(makeScene([a, b, c]));
     const arrow = findArrow(result.elements);
 
-    expect(arrow.y).toBeGreaterThan(115);
-    expect(arrow.y).toBeLessThanOrEqual(121);
+    // A's bottom edge midpoint = (100, 120); B's top edge = (100, 280).
+    expect(arrow.x).toBe(100);
+    expect(arrow.y).toBe(120);
 
     const lastPoint = arrow.points[arrow.points.length - 1]!;
-    const endY = arrow.y + lastPoint[1];
-    expect(endY).toBeGreaterThanOrEqual(279);
-    expect(endY).toBeLessThan(285);
+    expect(arrow.x + lastPoint[0]).toBe(100);
+    expect(arrow.y + lastPoint[1]).toBe(280);
   });
 
   it('keeps startBinding / endBinding so Excalidraw still auto-re-anchors', () => {
