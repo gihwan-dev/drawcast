@@ -4,6 +4,7 @@
 // future tools. Primitive-specific schemas live alongside each tool.
 
 import { z } from 'zod';
+import type { PreviewRequestOptions } from './helpers/preview.js';
 
 /** `[x, y]` scene coordinates. */
 export const PointSchema = z.tuple([z.number(), z.number()]);
@@ -156,4 +157,77 @@ export const SIZE_JSON_SCHEMA = {
   items: { type: 'number' },
   minItems: 2,
   maxItems: 2,
+} as const;
+
+/**
+ * Optional `returnPreview` flag shared by every upsert tool. Accepts either
+ * a bare boolean (`true` = take a snapshot with defaults) or an object that
+ * tunes format/scale/timeout. Undefined / `false` disables preview.
+ */
+export const ReturnPreviewSchema = z
+  .union([
+    z.boolean(),
+    z.object({
+      format: z.enum(['png', 'jpeg']).optional(),
+      scale: z.number().min(1).max(4).optional(),
+      timeoutMs: z.number().min(1000).max(30_000).optional(),
+    }),
+  ])
+  .optional();
+
+/**
+ * Normalise the parsed `returnPreview` value into preview helper options.
+ * Returns `null` when the caller opted out (undefined or `false`).
+ */
+export function normalizeReturnPreview(
+  value: z.infer<typeof ReturnPreviewSchema>,
+): PreviewRequestOptions | null {
+  if (value === undefined || value === false) {
+    return null;
+  }
+  if (value === true) {
+    return {};
+  }
+  const out: PreviewRequestOptions = {};
+  if (value.format !== undefined) out.format = value.format;
+  if (value.scale !== undefined) out.scale = value.scale;
+  if (value.timeoutMs !== undefined) out.timeoutMs = value.timeoutMs;
+  return out;
+}
+
+/**
+ * JSON Schema fragment for `returnPreview`. Tools spread this into their
+ * own `properties` object. The wording explicitly calls out the
+ * self-feedback use case and the token cost so the model doesn't blindly
+ * flip it on for every tiny tweak.
+ */
+export const RETURN_PREVIEW_JSON_SCHEMA = {
+  description:
+    'If true (or an object), include a base64 scene preview image in the response after this mutation succeeds. Useful for visual self-feedback between upsert batches. Use after layout-sensitive changes; avoid on every small tweak (each preview adds ~1-4 MB of image tokens). Requires the Drawcast desktop app to be running; in headless MCP mode a warning replaces the image.',
+  oneOf: [
+    { type: 'boolean' },
+    {
+      type: 'object',
+      properties: {
+        format: {
+          type: 'string',
+          enum: ['png', 'jpeg'],
+          description:
+            'PNG is lossless (preferred for self-review). JPEG is smaller (user-share).',
+        },
+        scale: {
+          type: 'number',
+          minimum: 1,
+          maximum: 4,
+          description: 'Render scale factor. Default 2 (Retina). Use 3+ to inspect small labels.',
+        },
+        timeoutMs: {
+          type: 'number',
+          minimum: 1000,
+          maximum: 30000,
+          description: 'Maximum wait for the app to reply. Larger scenes need more time.',
+        },
+      },
+    },
+  ],
 } as const;

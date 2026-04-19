@@ -6,8 +6,18 @@ import { z } from 'zod';
 import type { Group, PrimitiveId } from '@drawcast/core';
 import { SceneLockError } from '../store.js';
 import { lockErrorMessage } from './errors.js';
-import { defineTool, type ToolExecutionResult } from './types.js';
-import { formatZodError } from './utils.js';
+import {
+  defineTool,
+  type ToolContentBlock,
+  type ToolExecutionResult,
+} from './types.js';
+import {
+  RETURN_PREVIEW_JSON_SCHEMA,
+  ReturnPreviewSchema,
+  formatZodError,
+  normalizeReturnPreview,
+} from './utils.js';
+import { requestScenePreview } from './helpers/preview.js';
 
 export const drawUpsertGroupInputSchema = z.object({
   id: z.string().min(1),
@@ -15,12 +25,13 @@ export const drawUpsertGroupInputSchema = z.object({
   angle: z.number().optional(),
   locked: z.boolean().optional(),
   opacity: z.number().min(0).max(100).optional(),
+  returnPreview: ReturnPreviewSchema,
 });
 
 export type DrawUpsertGroupInput = z.infer<typeof drawUpsertGroupInputSchema>;
 
 const DESCRIPTION =
-  'Gather existing primitives into a group so they move and copy as a unit. Children are referenced by primitive id; the group itself has no visual shape.';
+  'Gather existing primitives into a group so they move and copy as a unit. Children are referenced by primitive id; the group itself has no visual shape. Pass `returnPreview: true` to receive a PNG snapshot of the scene after the upsert for visual self-review.';
 
 export const drawUpsertGroup = defineTool({
   name: 'draw_upsert_group',
@@ -38,10 +49,11 @@ export const drawUpsertGroup = defineTool({
       angle: { type: 'number', description: 'Rotation in degrees' },
       locked: { type: 'boolean' },
       opacity: { type: 'number', description: '0-100' },
+      returnPreview: RETURN_PREVIEW_JSON_SCHEMA,
     },
     required: ['id', 'children'],
   },
-  async execute(rawArgs, store): Promise<ToolExecutionResult> {
+  async execute(rawArgs, store, deps): Promise<ToolExecutionResult> {
     const parsed = drawUpsertGroupInputSchema.safeParse(rawArgs);
     if (!parsed.success) {
       return {
@@ -82,12 +94,25 @@ export const drawUpsertGroup = defineTool({
       throw err;
     }
 
+    const baseContent: ToolContentBlock[] = [
+      {
+        type: 'text',
+        text: `\u2713 group ${args.id} upserted (${args.children.length} children)`,
+      },
+    ];
+
+    const previewOpts = normalizeReturnPreview(args.returnPreview);
+    if (previewOpts === null) {
+      return { content: baseContent };
+    }
+    const preview = await requestScenePreview(deps?.previewBus, previewOpts);
+    if (preview.ok) {
+      return { content: [...baseContent, preview.image] };
+    }
     return {
       content: [
-        {
-          type: 'text',
-          text: `\u2713 group ${args.id} upserted (${args.children.length} children)`,
-        },
+        ...baseContent,
+        { type: 'text', text: `(${preview.warning})` },
       ],
     };
   },

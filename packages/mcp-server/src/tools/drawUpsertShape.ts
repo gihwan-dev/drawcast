@@ -15,13 +15,20 @@ import { z } from 'zod';
 import type { Embed, Freedraw, Image, Line } from '@drawcast/core';
 import { SceneLockError } from '../store.js';
 import { lockErrorMessage } from './errors.js';
-import { defineTool, type ToolExecutionResult } from './types.js';
+import {
+  defineTool,
+  type ToolContentBlock,
+  type ToolExecutionResult,
+} from './types.js';
 import {
   POINT_JSON_SCHEMA,
+  RETURN_PREVIEW_JSON_SCHEMA,
   SIZE_JSON_SCHEMA,
   STYLE_REF_JSON_SCHEMA,
   formatZodError,
+  normalizeReturnPreview,
 } from './utils.js';
+import { requestScenePreview } from './helpers/preview.js';
 import {
   embedInputSchema,
   freedrawInputSchema,
@@ -45,7 +52,7 @@ export const drawUpsertShapeInputSchema = z.discriminatedUnion('kind', [
 export type DrawUpsertShapeInput = z.infer<typeof drawUpsertShapeInputSchema>;
 
 const DESCRIPTION =
-  "Add or update a coverage primitive (line, freedraw, image, or embed). Use this for shapes that don't fit the box/edge/sticky model.";
+  "Add or update a coverage primitive (line, freedraw, image, or embed). Use this for shapes that don't fit the box/edge/sticky model. Pass `returnPreview: true` to receive a PNG snapshot of the scene after the upsert for visual self-review.";
 
 // Hand-rolled JSON Schema. We list every possible property (not all per-kind
 // variants) because tools/list doesn't try to model the discriminated union
@@ -100,6 +107,7 @@ const JSON_SCHEMA = {
     angle: { type: 'number', description: 'Rotation in degrees' },
     locked: { type: 'boolean' },
     opacity: { type: 'number', description: '0-100' },
+    returnPreview: RETURN_PREVIEW_JSON_SCHEMA,
   },
   required: ['id', 'kind', 'at'],
 } as const;
@@ -109,7 +117,7 @@ export const drawUpsertShape = defineTool({
   description: DESCRIPTION,
   inputSchema: drawUpsertShapeInputSchema,
   jsonSchema: JSON_SCHEMA,
-  async execute(rawArgs, store): Promise<ToolExecutionResult> {
+  async execute(rawArgs, store, deps): Promise<ToolExecutionResult> {
     const parsed = drawUpsertShapeInputSchema.safeParse(rawArgs);
     if (!parsed.success) {
       return {
@@ -157,9 +165,22 @@ export const drawUpsertShape = defineTool({
       throw err;
     }
 
+    const baseContent: ToolContentBlock[] = [
+      { type: 'text', text: `\u2713 ${args.kind} ${args.id} upserted` },
+    ];
+
+    const previewOpts = normalizeReturnPreview(args.returnPreview);
+    if (previewOpts === null) {
+      return { content: baseContent };
+    }
+    const preview = await requestScenePreview(deps?.previewBus, previewOpts);
+    if (preview.ok) {
+      return { content: [...baseContent, preview.image] };
+    }
     return {
       content: [
-        { type: 'text', text: `\u2713 ${args.kind} ${args.id} upserted` },
+        ...baseContent,
+        { type: 'text', text: `(${preview.warning})` },
       ],
     };
   },

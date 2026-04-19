@@ -6,16 +6,24 @@ import { z } from 'zod';
 import type { Connector, Point, PrimitiveId } from '@drawcast/core';
 import { SceneLockError } from '../store.js';
 import { lockErrorMessage } from './errors.js';
-import { defineTool, type ToolExecutionResult } from './types.js';
+import {
+  defineTool,
+  type ToolContentBlock,
+  type ToolExecutionResult,
+} from './types.js';
 import {
   ArrowheadSchema,
   POINT_JSON_SCHEMA,
   PointSchema,
+  RETURN_PREVIEW_JSON_SCHEMA,
+  ReturnPreviewSchema,
   STYLE_REF_JSON_SCHEMA,
   StyleRefSchema,
   formatZodError,
+  normalizeReturnPreview,
   normalizeStyleRef,
 } from './utils.js';
+import { requestScenePreview } from './helpers/preview.js';
 
 const EndpointSchema = z.union([z.string().min(1), PointSchema]);
 const RoutingSchema = z.enum(['straight', 'elbow', 'curved']);
@@ -37,12 +45,13 @@ export const drawUpsertEdgeInputSchema = z.object({
   angle: z.number().optional(),
   locked: z.boolean().optional(),
   opacity: z.number().min(0).max(100).optional(),
+  returnPreview: ReturnPreviewSchema,
 });
 
 export type DrawUpsertEdgeInput = z.infer<typeof drawUpsertEdgeInputSchema>;
 
 const DESCRIPTION =
-  'Connect two primitives or scene points with an arrow. Supports straight, elbow, and curved routing. from/to accept either a primitive id (string) for auto-binding or a [x, y] scene point.';
+  'Connect two primitives or scene points with an arrow. Supports straight, elbow, and curved routing. from/to accept either a primitive id (string) for auto-binding or a [x, y] scene point. Pass `returnPreview: true` to receive a PNG snapshot of the scene after the upsert for visual self-review.';
 
 const ENDPOINT_JSON_SCHEMA = {
   description: 'Primitive id (string) or scene coordinate [x, y]',
@@ -109,10 +118,11 @@ export const drawUpsertEdge = defineTool({
       angle: { type: 'number' },
       locked: { type: 'boolean' },
       opacity: { type: 'number' },
+      returnPreview: RETURN_PREVIEW_JSON_SCHEMA,
     },
     required: ['id', 'from', 'to'],
   },
-  async execute(rawArgs, store): Promise<ToolExecutionResult> {
+  async execute(rawArgs, store, deps): Promise<ToolExecutionResult> {
     const parsed = drawUpsertEdgeInputSchema.safeParse(rawArgs);
     if (!parsed.success) {
       return {
@@ -169,12 +179,25 @@ export const drawUpsertEdge = defineTool({
 
     const fromDesc = describeEndpoint(args.from);
     const toDesc = describeEndpoint(args.to);
+    const baseContent: ToolContentBlock[] = [
+      {
+        type: 'text',
+        text: `\u2713 edge ${args.id} ${fromDesc} \u2192 ${toDesc}`,
+      },
+    ];
+
+    const previewOpts = normalizeReturnPreview(args.returnPreview);
+    if (previewOpts === null) {
+      return { content: baseContent };
+    }
+    const preview = await requestScenePreview(deps?.previewBus, previewOpts);
+    if (preview.ok) {
+      return { content: [...baseContent, preview.image] };
+    }
     return {
       content: [
-        {
-          type: 'text',
-          text: `\u2713 edge ${args.id} ${fromDesc} \u2192 ${toDesc}`,
-        },
+        ...baseContent,
+        { type: 'text', text: `(${preview.warning})` },
       ],
     };
   },

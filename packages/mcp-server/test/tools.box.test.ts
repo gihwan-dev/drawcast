@@ -7,9 +7,22 @@ import { describe, expect, it } from 'vitest';
 import type { LabelBox, PrimitiveId } from '@drawcast/core';
 import { SceneStore } from '../src/store.js';
 import { drawUpsertBox } from '../src/tools/drawUpsertBox.js';
+import type { PreviewBus, PreviewResponse } from '../src/preview-bus.js';
 
 function asId(raw: string): PrimitiveId {
   return raw as PrimitiveId;
+}
+
+function stubBus(response: PreviewResponse): PreviewBus {
+  return {
+    emitRequest(): void {},
+    awaitResponse(): Promise<PreviewResponse> {
+      return Promise.resolve(response);
+    },
+    hasSubscribers(): boolean {
+      return true;
+    },
+  };
 }
 
 describe('draw_upsert_box', () => {
@@ -107,5 +120,58 @@ describe('draw_upsert_box', () => {
     expect(text).toContain('Reset edits');
     // Identifies which primitive is at fault.
     expect(text).toContain('a');
+  });
+
+  it('appends an image block when returnPreview:true and the bus responds', async () => {
+    const store = new SceneStore();
+    const bus = stubBus({ data: 'QUFB', mimeType: 'image/png' });
+    const result = await drawUpsertBox.execute(
+      { id: 'node', at: [0, 0], returnPreview: true },
+      store,
+      { previewBus: bus },
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(2);
+    expect(result.content[0]).toEqual({
+      type: 'text',
+      text: '\u2713 box node upserted',
+    });
+    expect(result.content[1]).toEqual({
+      type: 'image',
+      data: 'QUFB',
+      mimeType: 'image/png',
+    });
+    // Mutation succeeded even when preview is attached.
+    expect(store.getAllPrimitives()).toHaveLength(1);
+  });
+
+  it('degrades gracefully with a warning text block when no bus is available', async () => {
+    const store = new SceneStore();
+    const result = await drawUpsertBox.execute(
+      { id: 'node', at: [0, 0], returnPreview: true },
+      store,
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(2);
+    const warning = result.content[1] as { type: 'text'; text: string };
+    expect(warning.type).toBe('text');
+    expect(warning.text).toMatch(/headless/i);
+    // Store still reflects the mutation.
+    expect(store.getAllPrimitives()).toHaveLength(1);
+  });
+
+  it('skips preview entirely when the mutation itself fails', async () => {
+    const store = new SceneStore();
+    store.lock([asId('a')]);
+    const bus = stubBus({ data: 'QUFB', mimeType: 'image/png' });
+    const result = await drawUpsertBox.execute(
+      { id: 'a', at: [0, 0], returnPreview: true },
+      store,
+      { previewBus: bus },
+    );
+    expect(result.isError).toBe(true);
+    // No image block attached — only the lock error text.
+    expect(result.content).toHaveLength(1);
+    expect(result.content[0]).toMatchObject({ type: 'text' });
   });
 });

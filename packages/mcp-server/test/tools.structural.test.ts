@@ -5,9 +5,22 @@ import type { Frame, Group, PrimitiveId } from '@drawcast/core';
 import { SceneStore } from '../src/store.js';
 import { drawUpsertFrame } from '../src/tools/drawUpsertFrame.js';
 import { drawUpsertGroup } from '../src/tools/drawUpsertGroup.js';
+import type { PreviewBus, PreviewResponse } from '../src/preview-bus.js';
 
 function asId(raw: string): PrimitiveId {
   return raw as PrimitiveId;
+}
+
+function stubBus(response: PreviewResponse): PreviewBus {
+  return {
+    emitRequest(): void {},
+    awaitResponse(): Promise<PreviewResponse> {
+      return Promise.resolve(response);
+    },
+    hasSubscribers(): boolean {
+      return true;
+    },
+  };
 }
 
 describe('draw_upsert_group', () => {
@@ -47,6 +60,49 @@ describe('draw_upsert_group', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toMatch(/locked/i);
   });
+
+  it('appends an image block when returnPreview:true and the bus responds', async () => {
+    const store = new SceneStore();
+    const bus = stubBus({ data: 'QUFB', mimeType: 'image/png' });
+    const result = await drawUpsertGroup.execute(
+      { id: 'g1', children: ['a', 'b'], returnPreview: true },
+      store,
+      { previewBus: bus },
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(2);
+    expect(result.content[1]).toEqual({
+      type: 'image',
+      data: 'QUFB',
+      mimeType: 'image/png',
+    });
+  });
+
+  it('degrades gracefully with a warning when no bus is available', async () => {
+    const store = new SceneStore();
+    const result = await drawUpsertGroup.execute(
+      { id: 'g1', children: ['a'], returnPreview: true },
+      store,
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(2);
+    const warning = result.content[1] as { type: 'text'; text: string };
+    expect(warning.text).toMatch(/headless/i);
+    expect(store.getAllPrimitives()).toHaveLength(1);
+  });
+
+  it('skips preview entirely when the mutation itself fails', async () => {
+    const store = new SceneStore();
+    store.lock([asId('g1')]);
+    const bus = stubBus({ data: 'QUFB', mimeType: 'image/png' });
+    const result = await drawUpsertGroup.execute(
+      { id: 'g1', children: ['a'], returnPreview: true },
+      store,
+      { previewBus: bus },
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content).toHaveLength(1);
+  });
 });
 
 describe('draw_upsert_frame', () => {
@@ -82,5 +138,66 @@ describe('draw_upsert_frame', () => {
     );
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toMatch(/size/i);
+  });
+
+  it('appends an image block when returnPreview:true and the bus responds', async () => {
+    const store = new SceneStore();
+    const bus = stubBus({ data: 'QUFB', mimeType: 'image/png' });
+    const result = await drawUpsertFrame.execute(
+      {
+        id: 'f',
+        at: [0, 0],
+        size: [400, 300],
+        children: [],
+        returnPreview: true,
+      },
+      store,
+      { previewBus: bus },
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(2);
+    expect(result.content[1]).toEqual({
+      type: 'image',
+      data: 'QUFB',
+      mimeType: 'image/png',
+    });
+  });
+
+  it('degrades gracefully with a warning when no bus is available', async () => {
+    const store = new SceneStore();
+    const result = await drawUpsertFrame.execute(
+      {
+        id: 'f',
+        at: [0, 0],
+        size: [400, 300],
+        children: [],
+        returnPreview: true,
+      },
+      store,
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toHaveLength(2);
+    const warning = result.content[1] as { type: 'text'; text: string };
+    expect(warning.text).toMatch(/headless/i);
+    expect(store.getAllPrimitives()).toHaveLength(1);
+  });
+
+  it('skips preview entirely when the mutation itself fails', async () => {
+    const store = new SceneStore();
+    store.lock([asId('f')]);
+    const bus = stubBus({ data: 'QUFB', mimeType: 'image/png' });
+    const result = await drawUpsertFrame.execute(
+      {
+        id: 'f',
+        at: [0, 0],
+        size: [400, 300],
+        children: [],
+        returnPreview: true,
+      },
+      store,
+      { previewBus: bus },
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content).toHaveLength(1);
   });
 });
