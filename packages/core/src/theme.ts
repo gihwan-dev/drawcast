@@ -91,11 +91,12 @@ export const sketchyTheme = {
   nodes: {
     default: {
       strokeColor: '#1e1e1e',
-      backgroundColor: '#ffffff',
+      backgroundColor: '#fef3c7',
       fillStyle: 'solid',
       strokeWidth: 2,
       strokeStyle: 'solid',
       roughness: 1,
+      roundness: 3,
     },
     terminal: {
       shape: 'ellipse',
@@ -195,12 +196,13 @@ export const cleanTheme = {
   },
   nodes: {
     default: {
-      strokeColor: '#1e1e1e',
-      backgroundColor: '#ffffff',
+      strokeColor: '#1e40af',
+      backgroundColor: '#e0f2fe',
       fillStyle: 'solid',
       strokeWidth: 2,
       strokeStyle: 'solid',
       roughness: 0,
+      roundness: 3,
     },
     terminal: {
       shape: 'ellipse',
@@ -301,11 +303,12 @@ export const monoTheme = {
   nodes: {
     default: {
       strokeColor: '#1e1e1e',
-      backgroundColor: '#ffffff',
+      backgroundColor: '#f1f3f5',
       fillStyle: 'hachure',
       strokeWidth: 2,
       strokeStyle: 'solid',
       roughness: 1,
+      roundness: 3,
     },
     terminal: {
       shape: 'ellipse',
