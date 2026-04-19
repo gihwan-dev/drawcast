@@ -127,3 +127,34 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/*
+ * Thin overlay-style scrollbar used by the chat viewport and other
+ * long-list panels. Keeps Tauri's macOS/WebView2 presentation consistent
+ * and minimizes the gutter so scrollbars don't jitter layout when
+ * content grows/shrinks.
+ */
+.dc-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dc-border-strong) transparent;
+}
+.dc-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.dc-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.dc-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--dc-border-strong);
+  border: 2px solid transparent;
+  border-radius: var(--dc-radius-full);
+  background-clip: padding-box;
+}
+.dc-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--dc-text-tertiary);
+  background-clip: padding-box;
+}
+.dc-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}

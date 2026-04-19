@@ -3,12 +3,17 @@
 //
 // Responsibilities:
 // - Subscribe to `chat-event` NDJSON stream + `chat-exit` lifecycle event.
-// - Render message history (user + assistant bubbles).
+// - Render message history via assistant-ui Thread primitives.
 // - Host the composer: multiline text input + attachment chips + Send.
 // - Drag-drop / paste / picker uploads — each dropped file is BOTH saved
 //   into the session's `uploads/` (so Claude's Read tool can reach it by
 //   relative path) AND attached as a base64 content block on the next
 //   user message (so the vision model can see images and PDFs inline).
+import {
+  AssistantRuntimeProvider,
+  MessagePrimitive,
+  ThreadPrimitive,
+} from '@assistant-ui/react';
 import {
   useCallback,
   useEffect,
@@ -21,15 +26,14 @@ import {
 import {
   subscribeChatEvents,
   subscribeChatExit,
-  type AssistantContentBlock,
-  type UserContentBlock,
 } from '../services/chat.js';
 import { saveUploads } from '../services/uploads.js';
-import { useChatStore, type Attachment, type ChatMessage } from '../store/chatStore.js';
+import { useChatStore, type Attachment } from '../store/chatStore.js';
 import { useToastStore } from '../store/toastStore.js';
+import { ToolCallUI } from './chat/ToolCallUI.js';
+import { useDrawcastRuntime } from './chat/runtime.js';
 
 export function ChatPanel(): JSX.Element {
-  const messages = useChatStore((s) => s.messages);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const ready = useChatStore((s) => s.ready);
   const lastError = useChatStore((s) => s.lastError);
@@ -49,76 +53,45 @@ export function ChatPanel(): JSX.Element {
     };
   }, []);
 
+  const runtime = useDrawcastRuntime();
+
   return (
-    <section
-      data-testid="dc-chat-panel"
-      className="flex h-full w-full flex-col bg-dc-bg-panel"
-    >
-      <ChatScrollRegion messages={messages} />
-      {lastError !== null && (
-        <div
-          role="alert"
-          data-testid="dc-chat-error"
-          className="border-t border-dc-border-hairline bg-dc-status-danger/10 px-dc-lg py-dc-sm text-[12px] text-dc-status-danger"
-        >
-          {lastError}
-        </div>
-      )}
-      <ChatComposer streaming={isStreaming} ready={ready} />
-    </section>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Scroll region: auto-sticks to bottom while the user is near the bottom,
-// preserves scroll position if they've scrolled up to read history.
-
-function ChatScrollRegion({ messages }: { messages: ChatMessage[] }): JSX.Element {
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const stickyRef = useRef(true);
-
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (el === null) return;
-    if (stickyRef.current) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [messages]);
-
-  const onScroll = useCallback(() => {
-    const el = scrollerRef.current;
-    if (el === null) return;
-    const distance = el.scrollHeight - (el.scrollTop + el.clientHeight);
-    stickyRef.current = distance < 48;
-  }, []);
-
-  if (messages.length === 0) {
-    return (
-      <div
-        ref={scrollerRef}
-        onScroll={onScroll}
-        className="flex-1 overflow-y-auto px-dc-lg py-dc-lg"
+    <AssistantRuntimeProvider runtime={runtime}>
+      <section
+        data-testid="dc-chat-panel"
+        className="flex h-full w-full flex-col bg-dc-bg-panel"
       >
-        <ChatEmptyState />
-      </div>
-    );
-  }
-
-  return (
-    <div
-      ref={scrollerRef}
-      onScroll={onScroll}
-      data-testid="dc-chat-messages"
-      className="flex-1 overflow-y-auto px-dc-lg py-dc-lg"
-    >
-      <ul className="flex flex-col gap-dc-md">
-        {messages.map((m) => (
-          <li key={m.id} data-role={m.role}>
-            <MessageBubble message={m} />
-          </li>
-        ))}
-      </ul>
-    </div>
+        <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
+          <ThreadPrimitive.Viewport
+            data-testid="dc-chat-messages"
+            autoScroll
+            className="dc-scrollbar flex-1 overflow-y-auto px-dc-lg py-dc-lg"
+          >
+            <ThreadPrimitive.Empty>
+              <ChatEmptyState />
+            </ThreadPrimitive.Empty>
+            <div className="flex flex-col gap-dc-md">
+              <ThreadPrimitive.Messages
+                components={{
+                  UserMessage,
+                  AssistantMessage,
+                }}
+              />
+            </div>
+          </ThreadPrimitive.Viewport>
+        </ThreadPrimitive.Root>
+        {lastError !== null && (
+          <div
+            role="alert"
+            data-testid="dc-chat-error"
+            className="border-t border-dc-border-hairline bg-dc-status-danger/10 px-dc-lg py-dc-sm text-[12px] text-dc-status-danger"
+          >
+            {lastError}
+          </div>
+        )}
+        <ChatComposer streaming={isStreaming} ready={ready} />
+      </section>
+    </AssistantRuntimeProvider>
   );
 }
 
@@ -143,88 +116,88 @@ function ChatEmptyState(): JSX.Element {
 }
 
 // -----------------------------------------------------------------------------
-// Bubble — distinguishes user/assistant; assistant renders text + tool_use
-// blocks so the user can see which MCP tool was called and what for.
+// Message bubbles — wired through assistant-ui's MessagePrimitive. Part
+// rendering is delegated to small components so text / image / file /
+// tool-call each get their own visual treatment without growing the
+// bubble's outer wrapper.
 
-function MessageBubble({ message }: { message: ChatMessage }): JSX.Element {
-  const isUser = message.role === 'user';
-  const wrapperClass = isUser
-    ? 'ml-auto max-w-[85%] rounded-dc-md bg-dc-accent-primary px-dc-md py-dc-sm text-dc-text-inverse shadow-dc-e1'
-    : 'mr-auto max-w-[85%] rounded-dc-md border border-dc-border-hairline bg-dc-bg-elevated px-dc-md py-dc-sm text-dc-text-primary shadow-dc-e1';
+function UserMessage(): JSX.Element {
   return (
-    <div className={wrapperClass} data-testid={isUser ? 'dc-msg-user' : 'dc-msg-assistant'}>
-      {message.content.map((block, i) => (
-        <BlockRenderer key={i} block={block} dark={isUser} />
-      ))}
-      {message.isStreaming && !isUser && (
-        <span
-          className="mt-dc-xs inline-block text-[11px] font-mono text-dc-text-tertiary"
-          aria-label="streaming"
-        >
-          ▍
-        </span>
-      )}
+    <MessagePrimitive.Root
+      data-testid="dc-msg-user"
+      className="ml-auto max-w-[85%] rounded-dc-md bg-dc-accent-primary px-dc-md py-dc-sm text-dc-text-inverse shadow-dc-e1"
+    >
+      <MessagePrimitive.Parts
+        components={{
+          Text: TextPart,
+          Image: ImagePart,
+          File: FilePartUser,
+        }}
+      />
+    </MessagePrimitive.Root>
+  );
+}
+
+function AssistantMessage(): JSX.Element {
+  return (
+    <MessagePrimitive.Root
+      data-testid="dc-msg-assistant"
+      className="mr-auto w-full max-w-[85%] rounded-dc-md border border-dc-border-hairline bg-dc-bg-elevated px-dc-md py-dc-sm text-dc-text-primary shadow-dc-e1"
+    >
+      <MessagePrimitive.Parts
+        components={{
+          Text: TextPart,
+          Image: ImagePart,
+          File: FilePartAssistant,
+          Empty: StreamingCursor,
+          tools: { Fallback: ToolCallUI },
+        }}
+      />
+    </MessagePrimitive.Root>
+  );
+}
+
+function TextPart({ text }: { text: string }): JSX.Element {
+  return (
+    <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{text}</p>
+  );
+}
+
+function ImagePart({ image }: { image: string }): JSX.Element {
+  return (
+    <img
+      src={image}
+      alt="attached"
+      className="mt-dc-xs max-h-56 rounded-dc-sm border border-dc-border-hairline"
+    />
+  );
+}
+
+function FilePartUser({ mimeType }: { mimeType: string }): JSX.Element {
+  return (
+    <div className="mt-dc-xs rounded-dc-sm bg-white/10 px-dc-sm py-dc-xs text-[12px] text-dc-text-inverse/80">
+      📄 {mimeType}
     </div>
   );
 }
 
-function BlockRenderer({
-  block,
-  dark,
-}: {
-  block: UserContentBlock | AssistantContentBlock;
-  dark: boolean;
-}): JSX.Element | null {
-  if (block.type === 'text') {
-    return (
-      <p className="whitespace-pre-wrap text-[13px] leading-relaxed">
-        {block.text}
-      </p>
-    );
-  }
-  if (block.type === 'image') {
-    // Render attached user images inline (small thumbnail).
-    const src = `data:${block.source.media_type};base64,${block.source.data}`;
-    return (
-      <img
-        src={src}
-        alt="attached image"
-        className="mt-dc-xs max-h-56 rounded-dc-sm border border-dc-border-hairline"
-      />
-    );
-  }
-  if (block.type === 'document') {
-    return (
-      <div
-        className={`mt-dc-xs rounded-dc-sm px-dc-sm py-dc-xs text-[12px] ${
-          dark ? 'bg-white/10 text-dc-text-inverse/80' : 'bg-dc-bg-app text-dc-text-secondary'
-        }`}
-      >
-        📄 {block.source.media_type}
-      </div>
-    );
-  }
-  if (block.type === 'tool_use') {
-    return (
-      <div
-        className="mt-dc-xs rounded-dc-sm border border-dc-border-hairline bg-dc-bg-app/60 px-dc-sm py-dc-xs text-[12px] text-dc-text-secondary"
-        data-testid="dc-msg-tool-use"
-      >
-        <span className="font-mono">🔧 {block.name}</span>
-      </div>
-    );
-  }
-  if (block.type === 'tool_result') {
-    return (
-      <div
-        className="mt-dc-xs rounded-dc-sm border border-dc-border-hairline bg-dc-bg-app/60 px-dc-sm py-dc-xs text-[12px] text-dc-text-secondary"
-        data-testid="dc-msg-tool-result"
-      >
-        <span className="font-mono">{block.is_error ? '❌' : '✅'} tool result</span>
-      </div>
-    );
-  }
-  return null;
+function FilePartAssistant({ mimeType }: { mimeType: string }): JSX.Element {
+  return (
+    <div className="mt-dc-xs rounded-dc-sm bg-dc-bg-app px-dc-sm py-dc-xs text-[12px] text-dc-text-secondary">
+      📄 {mimeType}
+    </div>
+  );
+}
+
+function StreamingCursor(): JSX.Element {
+  return (
+    <span
+      aria-label="streaming"
+      className="mt-dc-xs inline-block font-mono text-[11px] text-dc-text-tertiary"
+    >
+      ▍
+    </span>
+  );
 }
 
 // -----------------------------------------------------------------------------
@@ -427,7 +400,7 @@ function ChatComposer({ streaming, ready }: ComposerProps): JSX.Element {
           data-testid="dc-chat-attach"
           aria-label="Attach files"
           onClick={() => fileInputRef.current?.click()}
-          className="flex h-9 w-9 items-center justify-center rounded-dc-md border border-dc-border-hairline bg-dc-bg-elevated text-dc-text-primary transition-colors hover:bg-dc-bg-hover"
+          className="flex h-11 w-11 items-center justify-center rounded-dc-md border border-dc-border-hairline bg-dc-bg-elevated text-[18px] leading-none text-dc-text-primary transition-colors hover:bg-dc-bg-hover"
         >
           +
         </button>
@@ -438,7 +411,7 @@ function ChatComposer({ streaming, ready }: ComposerProps): JSX.Element {
             onClick={() => {
               void cancelTurn();
             }}
-            className="h-9 rounded-dc-md border border-dc-status-danger bg-dc-bg-elevated px-dc-md text-[13px] font-medium text-dc-status-danger transition-colors hover:bg-dc-bg-hover"
+            className="h-11 rounded-dc-md border border-dc-status-danger bg-dc-bg-elevated px-dc-md text-[13px] font-medium text-dc-status-danger transition-colors hover:bg-dc-bg-hover"
           >
             Stop
           </button>
@@ -450,7 +423,7 @@ function ChatComposer({ streaming, ready }: ComposerProps): JSX.Element {
             onClick={() => {
               void sendMessage();
             }}
-            className="h-9 rounded-dc-md bg-dc-accent-primary px-dc-md text-[13px] font-medium text-dc-text-inverse transition-colors hover:bg-dc-accent-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-11 rounded-dc-md bg-dc-accent-primary px-dc-md text-[13px] font-medium text-dc-text-inverse transition-colors hover:bg-dc-accent-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             Send
           </button>
