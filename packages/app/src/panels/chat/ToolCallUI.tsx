@@ -2,13 +2,19 @@
 // `tools.Fallback` in MessagePrimitive.Parts so *every* tool Claude
 // invokes — Bash, Read, mcp__drawcast__*, etc. — renders the same way.
 //
-// Interaction model: native <details>. No extra state, no effect loops,
-// and keyboard/screen-reader accessibility is free.
+// Interaction model: React state-driven toggle. A prior revision used a
+// native <details>, but assistant-ui re-creates this component on every
+// streaming tick (new `status`, new `result` arriving) which wiped the
+// implicit `open` flag and made the card look uncollapsible. Explicit
+// open state is keyed by toolCallId so index-keyed part remounts do not
+// collapse the card immediately after a click.
+import { useCallback, useEffect, useState } from 'react';
 import type { ToolCallMessagePartComponent } from '@assistant-ui/react';
 
 // `mcp__{server}__{tool}` — double underscore on both sides of the
 // server slug. The tool part may itself contain underscores.
 const MCP_TOOL_PATTERN = /^mcp__([^_]+)__(.+)$/;
+const toolOpenById = new Map<string, boolean>();
 
 function splitName(name: string): { short: string; server: string | null } {
   const match = name.match(MCP_TOOL_PATTERN);
@@ -50,6 +56,7 @@ function formatResult(content: unknown): string {
 }
 
 export const ToolCallUI: ToolCallMessagePartComponent = ({
+  toolCallId,
   toolName,
   args,
   argsText,
@@ -57,6 +64,20 @@ export const ToolCallUI: ToolCallMessagePartComponent = ({
   isError,
   status,
 }) => {
+  const [open, setOpen] = useState(() => toolOpenById.get(toolCallId) ?? false);
+
+  useEffect(() => {
+    setOpen(toolOpenById.get(toolCallId) ?? false);
+  }, [toolCallId]);
+
+  const toggleOpen = useCallback(() => {
+    setOpen((value) => {
+      const next = !value;
+      toolOpenById.set(toolCallId, next);
+      return next;
+    });
+  }, [toolCallId]);
+
   const { short, server } = splitName(toolName);
   const hasResult = result !== undefined;
   const running = !hasResult && status?.type === 'running';
@@ -77,13 +98,23 @@ export const ToolCallUI: ToolCallMessagePartComponent = ({
   const resultText = hasResult ? formatResult(result) : '';
 
   return (
-    <details
+    <div
       data-testid="dc-tool-card"
       data-tool-status={indicator}
-      className={`group mt-dc-xs overflow-hidden rounded-dc-sm border ${borderCls} bg-dc-bg-app/60`}
+      data-open={open ? 'true' : 'false'}
+      className={`mt-dc-xs overflow-hidden rounded-dc-sm border ${borderCls} bg-dc-bg-app/60`}
     >
-      <summary className="flex cursor-pointer list-none items-center gap-dc-xs px-dc-sm py-dc-xs text-[12px] text-dc-text-secondary select-none [&::-webkit-details-marker]:hidden">
-        <span aria-hidden className="text-dc-text-tertiary transition-transform group-open:rotate-90">
+      <button
+        type="button"
+        onClick={toggleOpen}
+        aria-expanded={open}
+        className="flex w-full cursor-pointer items-center gap-dc-xs px-dc-sm py-dc-xs text-left text-[12px] text-dc-text-secondary select-none"
+      >
+        <span
+          aria-hidden
+          className="text-dc-text-tertiary transition-transform"
+          style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
+        >
           ▸
         </span>
         <span aria-hidden>🔧</span>
@@ -96,29 +127,31 @@ export const ToolCallUI: ToolCallMessagePartComponent = ({
         <span className={`ml-auto font-mono text-[13px] ${indicatorCls}`} aria-label={`tool ${indicator}`}>
           {indicatorGlyph}
         </span>
-      </summary>
-      <div className="border-t border-dc-border-hairline px-dc-sm py-dc-xs">
-        <p className="mb-dc-xs text-[10px] uppercase tracking-wide text-dc-text-tertiary">
-          Input
-        </p>
-        <pre className="dc-scrollbar max-h-60 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-dc-text-secondary">
-          {inputText}
-        </pre>
-        {hasResult && (
-          <div className="mt-dc-sm">
-            <p className="mb-dc-xs text-[10px] uppercase tracking-wide text-dc-text-tertiary">
-              Result
-            </p>
-            <pre
-              className={`dc-scrollbar max-h-60 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed ${
-                isError ? 'text-dc-status-danger' : 'text-dc-text-secondary'
-              }`}
-            >
-              {resultText.length > 0 ? resultText : '(empty)'}
-            </pre>
-          </div>
-        )}
-      </div>
-    </details>
+      </button>
+      {open && (
+        <div className="border-t border-dc-border-hairline px-dc-sm py-dc-xs">
+          <p className="mb-dc-xs text-[10px] uppercase tracking-wide text-dc-text-tertiary">
+            Input
+          </p>
+          <pre className="dc-scrollbar max-h-60 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-dc-text-secondary">
+            {inputText}
+          </pre>
+          {hasResult && (
+            <div className="mt-dc-sm">
+              <p className="mb-dc-xs text-[10px] uppercase tracking-wide text-dc-text-tertiary">
+                Result
+              </p>
+              <pre
+                className={`dc-scrollbar max-h-60 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed ${
+                  isError ? 'text-dc-status-danger' : 'text-dc-text-secondary'
+                }`}
+              >
+                {resultText.length > 0 ? resultText : '(empty)'}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 };

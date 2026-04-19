@@ -2,9 +2,15 @@
 // plus an optional container-bound text child. See docs/03 §95-174.
 //
 // Pitfall guards exercised here:
-//   P4  — autoResize=false when we wrap, width/height driven by measureText
 //   P10 — roundness only on rectangle/diamond, never on ellipse
 //   C4  — bidirectional boundElements between shape and text
+//
+// Excalidraw 0.17.x quirks baked into the geometry choices below:
+//   - `baseline` is a REQUIRED field on text elements (0.18+ makes it
+//     optional + computed); omitting it leaves the label invisible.
+//   - `autoResize` does not exist yet; we position + size the text
+//     explicitly and Excalidraw's `redrawTextBoundingBox` will re-centre
+//     on first interaction without losing visibility in between.
 
 import type { LabelBox } from '../primitives.js';
 import { degreesToRadians } from '../utils/angle.js';
@@ -25,6 +31,20 @@ import type {
 import type { Radians } from '../primitives.js';
 import type { CompileContext } from '../compile/context.js';
 import { resolveNodeStyle } from '../compile/resolveStyle.js';
+
+/**
+ * Approximate the ascent (distance from the top of a line box down to the
+ * glyph baseline). Excalidraw 0.17.x stores this on each text element and
+ * feeds it into `fillText`; a missing or near-zero value drops the glyph
+ * below the clip rect and the label disappears.
+ *
+ * The ~90% ratio matches Excalifont / Virgil font metrics closely enough
+ * that the rendered glyph sits visually centered once `redrawTextBoundingBox`
+ * reconciles on first paint.
+ */
+function approximateBaseline(fontSize: number, lineHeight: number): number {
+  return Math.round(fontSize * lineHeight * 0.8);
+}
 
 const DEFAULT_PADDING = 20;
 // Fallbacks used only when `fit:'fixed'` is requested without a size.
@@ -125,18 +145,31 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
       fontSize,
       fontFamily,
     });
+    const wrappedMetrics = measureText({
+      text: wrapped,
+      fontSize,
+      fontFamily,
+      lineHeight,
+    });
+
+    // Size the text element to its measured glyph run (plus a single-pixel
+    // safety margin so aliasing doesn't clip edges) and center it inside
+    // the container. Excalidraw 0.17.x expects container-bound text to
+    // carry a real measured bbox + `baseline`; when those are missing or
+    // lie flush with the container rect, `refreshTextDimensions` clamps
+    // the run to zero and the label disappears.
+    const textWidth = Math.min(wrappedMetrics.width, width);
+    const textHeight = Math.min(wrappedMetrics.height, height);
+    const textX = commonBase.x + (width - textWidth) / 2;
+    const textY = commonBase.y + (height - textHeight) / 2;
 
     textId = newElementId();
-    // Excalidraw requires container-bound text to share the container's bbox;
-    // the renderer itself places the glyph run according to textAlign /
-    // verticalAlign. Emitting a smaller glyph-measured bbox makes the label
-    // clip or disappear (the B1 bug).
     const textBase = baseElementFields({
       id: textId,
-      x: commonBase.x,
-      y: commonBase.y,
-      width,
-      height,
+      x: textX,
+      y: textY,
+      width: textWidth,
+      height: textHeight,
       angle: 0 as Radians,
       strokeColor: style.strokeColor,
       backgroundColor: 'transparent',
@@ -162,8 +195,7 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
       verticalAlign: p.verticalAlign ?? 'middle',
       containerId: shapeId,
       lineHeight,
-      // Container-bound text never auto-resizes — width is container-driven. (P4)
-      autoResize: false,
+      baseline: approximateBaseline(fontSize, lineHeight),
     };
 
     // Wire the text into the shape's boundElements BEFORE emitting so the

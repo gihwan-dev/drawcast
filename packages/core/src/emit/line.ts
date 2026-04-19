@@ -63,6 +63,9 @@ export function emitLine(p: Line, ctx: CompileContext): void {
     customData: { ...(p.customData ?? {}), drawcastPrimitiveId: p.id },
   });
 
+  // Excalidraw 0.17.x has no `polygon` field on lines; first==last already
+  // renders a closed polyline visually. The polyline is auto-closed above
+  // so the final look is identical.
   const element: ExcalidrawLineElement = {
     ...base,
     type: 'line',
@@ -71,7 +74,6 @@ export function emitLine(p: Line, ctx: CompileContext): void {
     lastCommittedPoint: null,
     startArrowhead: null,
     endArrowhead: null,
-    polygon: p.polygon === true,
   };
 
   ctx.emit(element);

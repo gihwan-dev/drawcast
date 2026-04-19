@@ -95,10 +95,9 @@ describe('compile — Line', () => {
     expect(line.y).toBe(200);
     expect(line.width).toBe(50);
     expect(line.height).toBe(30);
-    expect(line.polygon).toBe(false);
   });
 
-  it('propagates polygon:true to the emitted element', () => {
+  it('polygon:true closes the polyline (first === last)', () => {
     const p: Line = {
       kind: 'line',
       id: 'tri' as PrimitiveId,
@@ -107,7 +106,6 @@ describe('compile — Line', () => {
         [0, 0],
         [40, 0],
         [20, 30],
-        [0, 0],
       ],
       polygon: true,
     };
@@ -116,7 +114,9 @@ describe('compile — Line', () => {
       result.elements,
       (el): el is ExcalidrawLineElement => el.type === 'line',
     );
-    expect(line.polygon).toBe(true);
+    // 0.17.x has no `polygon` field on line elements; the emitter
+    // simulates closure by ensuring the last point equals the first.
+    expect(line.points[0]).toEqual(line.points[line.points.length - 1]);
   });
 });
 

@@ -251,7 +251,9 @@ export const useChatStore = create<ChatState>()(
     if (ev.type === 'assistant') {
       const assistantEv = ev as Extract<ChatEvent, { type: 'assistant' }>;
       const uuid = typeof assistantEv.uuid === 'string' ? assistantEv.uuid : undefined;
-      const incoming = (assistantEv.message?.content ?? []) as AssistantContentBlock[];
+      const incoming = normalizeAssistantContent(
+        (assistantEv.message?.content ?? []) as AssistantContentBlock[],
+      );
       set((s) => {
         const existingIdx =
           uuid === undefined
@@ -259,6 +261,7 @@ export const useChatStore = create<ChatState>()(
             : s.messages.findIndex(
                 (m) => m.role === 'assistant' && m.turnUuid === uuid,
               );
+        if (incoming.length === 0) return s;
         if (existingIdx >= 0) {
           const updated = [...s.messages];
           updated[existingIdx] = {
@@ -403,4 +406,14 @@ function mergeAssistantContent(
   next: AssistantContentBlock[],
 ): AssistantContentBlock[] {
   return [...next];
+}
+
+function normalizeAssistantContent(
+  blocks: AssistantContentBlock[],
+): AssistantContentBlock[] {
+  return blocks.filter((b) => {
+    if (b.type === 'text') return b.text.trim().length > 0;
+    if (b.type === 'thinking') return (b.thinking ?? '').trim().length > 0;
+    return true;
+  });
 }
