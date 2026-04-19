@@ -12,3 +12,4 @@ src-tauri/binaries/drawcast-mcp-*
 *.log
 *.tsbuildinfo
 pnpm-debug.log*
+.claude/
