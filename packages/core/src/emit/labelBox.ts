@@ -125,19 +125,18 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
       fontSize,
       fontFamily,
     });
-    const wrappedMetrics = measureText({
-      text: wrapped,
-      fontSize,
-      fontFamily,
-    });
 
     textId = newElementId();
+    // Excalidraw requires container-bound text to share the container's bbox;
+    // the renderer itself places the glyph run according to textAlign /
+    // verticalAlign. Emitting a smaller glyph-measured bbox makes the label
+    // clip or disappear (the B1 bug).
     const textBase = baseElementFields({
       id: textId,
-      x: p.at[0] - wrappedMetrics.width / 2,
-      y: p.at[1] - wrappedMetrics.height / 2,
-      width: wrappedMetrics.width,
-      height: wrappedMetrics.height,
+      x: commonBase.x,
+      y: commonBase.y,
+      width,
+      height,
       angle: 0 as Radians,
       strokeColor: style.strokeColor,
       backgroundColor: 'transparent',
