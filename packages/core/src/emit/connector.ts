@@ -40,14 +40,43 @@ function isPoint(ref: PrimitiveId | Point): ref is Point {
   return typeof ref !== 'string';
 }
 
-function resolveEndpoint(
+/**
+ * Ray from the record's centre towards `towards` intersected with the
+ * record's axis-aligned bbox. Used so arrow endpoints land on the near
+ * edge of a bindable shape rather than its centre — matches Excalidraw's
+ * native "connect two shapes" visual behaviour. Excalidraw's binding
+ * still owns re-anchoring during drag; this only fixes the initial paint.
+ */
+function boundaryPoint(record: PrimitiveRecord, towards: Point): Point {
+  const cx = record.bbox.x + record.bbox.w / 2;
+  const cy = record.bbox.y + record.bbox.h / 2;
+  const dx = towards[0] - cx;
+  const dy = towards[1] - cy;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  if (absDx < 1e-6 && absDy < 1e-6) return [cx, cy];
+  const halfW = record.bbox.w / 2;
+  const halfH = record.bbox.h / 2;
+  const tx = absDx > 1e-6 ? halfW / absDx : Number.POSITIVE_INFINITY;
+  const ty = absDy > 1e-6 ? halfH / absDy : Number.POSITIVE_INFINITY;
+  const t = Math.min(tx, ty);
+  return [cx + dx * t, cy + dy * t];
+}
+
+interface ResolvedEndpointCenter {
+  center: Point;
+  /** Non-null only when the endpoint references a bindable primitive. */
+  record: PrimitiveRecord | null;
+}
+
+function resolveCenter(
   ref: PrimitiveId | Point,
   ctx: CompileContext,
   primitiveId: PrimitiveId,
   role: 'from' | 'to',
-): Point {
+): ResolvedEndpointCenter {
   if (isPoint(ref)) {
-    return [ref[0], ref[1]];
+    return { center: [ref[0], ref[1]], record: null };
   }
   const record = ctx.getRecord(ref);
   if (!record) {
@@ -56,9 +85,9 @@ function resolveEndpoint(
       message: `Connector ${primitiveId}.${role} references unknown primitive '${String(ref)}'.`,
       primitiveId,
     });
-    return [0, 0];
+    return { center: [0, 0], record: null };
   }
-  return centerOfRecord(record);
+  return { center: centerOfRecord(record), record };
 }
 
 function buildRawPoints(
@@ -139,9 +168,18 @@ export function emitConnector(p: Connector, ctx: CompileContext): void {
   const routing = p.routing ?? 'straight';
   const isElbow = routing === 'elbow';
 
-  // 1) Endpoints -> raw scene-coordinate points
-  const start = resolveEndpoint(p.from, ctx, p.id, 'from');
-  const end = resolveEndpoint(p.to, ctx, p.id, 'to');
+  // 1) Endpoints -> raw scene-coordinate points. Each endpoint that is a
+  //    reference to a bindable shape is anchored to the bbox edge nearest
+  //    the opposite endpoint, so the arrow starts/ends on the shape's
+  //    boundary rather than through its centre.
+  const fromRes = resolveCenter(p.from, ctx, p.id, 'from');
+  const toRes = resolveCenter(p.to, ctx, p.id, 'to');
+  const start = fromRes.record
+    ? boundaryPoint(fromRes.record, toRes.center)
+    : fromRes.center;
+  const end = toRes.record
+    ? boundaryPoint(toRes.record, fromRes.center)
+    : toRes.center;
   const rawPoints = buildRawPoints(start, end, routing);
   const { points, width, height } = normalizePoints(rawPoints);
 
