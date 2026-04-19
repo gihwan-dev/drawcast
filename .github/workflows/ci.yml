@@ -76,6 +76,7 @@ jobs:
       # tauri.conf.json exist on disk, even for `cargo check` / `clippy`.
       # Build the sidecar first so those checks have something to resolve.
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @drawcast/core build
       - run: pnpm --filter @drawcast/mcp-server build
       - run: node packages/app/scripts/build-sidecar.mjs --target x86_64-unknown-linux-gnu
 
