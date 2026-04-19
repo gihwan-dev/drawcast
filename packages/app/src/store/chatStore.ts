@@ -6,6 +6,7 @@
 // StatusBar render. Tauri events land in `handleEvent`, which produces
 // immutable updates. Components read via selector hooks.
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import {
   cancelChat,
   fileToContentBlocks,
@@ -17,6 +18,16 @@ import {
   type RateLimitInfo,
   type UserContentBlock,
 } from '../services/chat.js';
+
+// Chat history survives app restarts via localStorage. Scene state is
+// already persisted by the MCP server; without this the canvas would
+// come back populated while the chat pane showed empty, which reads as
+// "the app lost my conversation" (B5).
+//
+// Cap the persisted list so long-running sessions don't blow past the
+// ~5MB localStorage quota. 200 bubbles ≈ well under the limit for pure
+// text; image attachments are a known cliff we haven't solved yet.
+const MAX_PERSISTED_MESSAGES = 200;
 
 function nanoId(): string {
   // Cheap client-side id. Good enough to key React lists; we don't send
@@ -99,7 +110,9 @@ export interface ChatState {
 
 const EMPTY_DRAFT: ChatDraft = { text: '', attachments: [] };
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>()(
+  persist(
+    (set, get) => ({
   messages: [],
   draft: { ...EMPTY_DRAFT },
   sessionId: null,
@@ -345,7 +358,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
       ready: false,
     });
   },
-}));
+    }),
+    {
+      name: 'drawcast-chat',
+      storage: createJSONStorage(() => localStorage),
+      version: 1,
+      // Only the durable slice is persisted. The composer draft belongs to
+      // the live session; runtime flags (isStreaming, ready, rateLimit,
+      // lastError) must not leak across restarts or the UI comes back
+      // mid-stream with no actual child process running.
+      partialize: (s) => ({
+        messages: s.messages.slice(-MAX_PERSISTED_MESSAGES),
+        sessionId: s.sessionId,
+        model: s.model,
+        apiKeySource: s.apiKeySource,
+        mcpServers: s.mcpServers,
+        lastCostUsd: s.lastCostUsd,
+        lastUsage: s.lastUsage,
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        state.isStreaming = false;
+        state.ready = false;
+        state.rateLimit = null;
+        state.lastError = null;
+        state.draft = { ...EMPTY_DRAFT };
+      },
+    },
+  ),
+);
 
 /**
  * Merge incoming assistant content blocks into the existing list.
