@@ -26,15 +26,22 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use serde_json::{json, Value as JsonValue};
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, Command};
-use tokio::sync::Mutex;
+use tokio::process::{ChildStdin, Command};
+use tokio::sync::{oneshot, Mutex};
+
+/// Bound on how long `shutdown()` waits for the supervisor to reap the child.
+/// Long enough for `claude` to flush an in-flight turn after SIGTERM, short
+/// enough that a wedged child can't block window close or session switch.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Emitted when the child exits. `code` is the raw exit status or `None` if
 /// the OS killed the process with a signal.
@@ -45,9 +52,27 @@ struct ExitPayload {
 
 /// Public handle to the running chat child. Held in Tauri state as
 /// `ManagedChatHost` so commands can share it with the window-close hook.
+///
+/// Ownership model: the `Child` is owned exclusively by a supervisor task
+/// spawned in `spawn()`. Other code never locks the child — it communicates
+/// with the supervisor by sending on `cancel_tx` and awaiting `done_rx`.
+/// This avoids the deadlock the prior `Arc<Mutex<Option<Child>>>` design hit
+/// when `shutdown()` raced the supervisor's `child.wait().await` for the
+/// same lock.
 pub struct ChatHost {
-    child: Arc<Mutex<Option<Child>>>,
-    stdin: Arc<Mutex<Option<ChildStdin>>>,
+    /// Sends a one-shot cancel signal to the supervisor task. `take()`-ed on
+    /// the first `shutdown()` call so subsequent calls are no-ops.
+    cancel_tx: Mutex<Option<oneshot::Sender<()>>>,
+    /// Resolves once the supervisor has reaped the child and emitted
+    /// `chat-exit`. Lets `shutdown()` block (with a timeout) on full teardown
+    /// before returning, which the window-close hook relies on.
+    done_rx: Mutex<Option<oneshot::Receiver<()>>>,
+    /// Stdin handle for `write_line`. Dropped on shutdown so the child sees
+    /// EOF, which lets a well-behaved `claude` exit cleanly without a kill.
+    stdin: Mutex<Option<ChildStdin>>,
+    /// Liveness flag flipped by the supervisor on exit. Lock-free read for
+    /// the hot `is_alive()` path used by `ensure_chat_running`.
+    alive: Arc<AtomicBool>,
     session_path: PathBuf,
 }
 
@@ -101,9 +126,6 @@ impl ChatHost {
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
-        let child_arc = Arc::new(Mutex::new(Some(child)));
-        let stdin_arc = Arc::new(Mutex::new(stdin));
-
         if let Some(out) = stdout {
             let app_for_task = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -117,29 +139,36 @@ impl ChatHost {
             });
         }
 
+        let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
+        let (done_tx, done_rx) = oneshot::channel::<()>();
+        let alive = Arc::new(AtomicBool::new(true));
+        let alive_for_task = alive.clone();
         let app_for_exit = app.clone();
-        let child_for_wait = child_arc.clone();
+
+        // Supervisor: sole owner of `child`. Races a cancel signal against
+        // the natural exit so neither `shutdown()` nor `wait()` ever needs to
+        // hold a lock on the child. On cancel we send SIGTERM via
+        // `start_kill` and still `wait()` to reap, so we don't leave a zombie.
         tauri::async_runtime::spawn(async move {
-            let code = {
-                let mut guard = child_for_wait.lock().await;
-                match guard.as_mut() {
-                    Some(c) => match c.wait().await {
-                        Ok(status) => status.code(),
-                        Err(_) => None,
-                    },
-                    None => None,
+            let exit_code = tokio::select! {
+                _ = cancel_rx => {
+                    let _ = child.start_kill();
+                    child.wait().await.ok().and_then(|s| s.code())
                 }
+                res = child.wait() => res.ok().and_then(|s| s.code()),
             };
-            {
-                let mut guard = child_for_wait.lock().await;
-                *guard = None;
-            }
-            let _ = app_for_exit.emit("chat-exit", ExitPayload { code });
+            alive_for_task.store(false, Ordering::SeqCst);
+            // `done_tx` may have no receiver if `shutdown()` timed out and
+            // dropped the rx — that's fine, send is best-effort.
+            let _ = done_tx.send(());
+            let _ = app_for_exit.emit("chat-exit", ExitPayload { code: exit_code });
         });
 
         Ok(Self {
-            child: child_arc,
-            stdin: stdin_arc,
+            cancel_tx: Mutex::new(Some(cancel_tx)),
+            done_rx: Mutex::new(Some(done_rx)),
+            stdin: Mutex::new(stdin),
+            alive,
             session_path,
         })
     }
@@ -164,26 +193,37 @@ impl ChatHost {
         Ok(())
     }
 
-    /// Graceful shutdown — close stdin (signals EOF), then best-effort kill.
+    /// Graceful shutdown — close stdin (so a well-behaved child exits on
+    /// EOF), signal the supervisor to cancel, then await reap with a timeout.
+    /// Idempotent: a second call after exit no-ops because both `cancel_tx`
+    /// and `done_rx` are `take()`-ed on first use.
     pub async fn shutdown(&self) -> Result<()> {
+        // Drop stdin first. If the child exits cleanly on EOF, the
+        // supervisor's `wait()` arm of the select wins naturally and the
+        // cancel signal below is harmlessly ignored.
         {
             let mut guard = self.stdin.lock().await;
             *guard = None;
         }
-        let mut guard = self.child.lock().await;
-        if let Some(mut child) = guard.take() {
-            let _ = child.start_kill();
-            let _ = child.wait().await;
+        if let Some(tx) = self.cancel_tx.lock().await.take() {
+            // Send error means the supervisor already exited — that's fine.
+            let _ = tx.send(());
+        }
+        let rx = self.done_rx.lock().await.take();
+        if let Some(rx) = rx {
+            // Bound the wait so a wedged child can't block window close or
+            // session switch. After timeout `kill_on_drop(true)` on the
+            // Command still cleans up if `ChatHost` is dropped.
+            let _ = tokio::time::timeout(SHUTDOWN_TIMEOUT, rx).await;
         }
         Ok(())
     }
 
-    /// `false` after the child has exited (or been killed). The waiter
-    /// task nulls the internal slot on exit, so `chat_send` can detect a
-    /// dead host and respawn on the next turn without the frontend having
-    /// to orchestrate an explicit "start".
+    /// `false` after the supervisor has reaped the child. `chat_send` checks
+    /// this to decide whether to respawn, so it must be cheap — backed by an
+    /// `AtomicBool` rather than a mutex.
     pub async fn is_alive(&self) -> bool {
-        self.child.lock().await.is_some()
+        self.alive.load(Ordering::SeqCst)
     }
 
     #[allow(dead_code)]
