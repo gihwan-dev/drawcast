@@ -38,9 +38,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Install system deps
         run: |
@@ -62,6 +75,13 @@ jobs:
           key: cargo-${{ runner.os }}-ci-${{ hashFiles('packages/app/src-tauri/Cargo.lock') }}
           restore-keys: |
             cargo-${{ runner.os }}-ci-
+
+      # Tauri's build.rs verifies that externalBin paths referenced in
+      # tauri.conf.json exist on disk, even for `cargo check` / `clippy`.
+      # Build the sidecar first so those checks have something to resolve.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @drawcast/mcp-server build
+      - run: node packages/app/scripts/build-sidecar.mjs --target x86_64-unknown-linux-gnu
 
       # `-D warnings` deferred: the existing codebase has a handful of
       # non-blocking clippy suggestions (needless_borrow, let_unit_value,
