@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://drawcast.dev/schemas/eval-question.json",
+  "title": "Drawcast Eval Question",
+  "type": "object",
+  "required": ["id", "category", "difficulty", "prompt", "expected"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z]+-[a-z0-9-]+-[0-9]{2}$",
+      "description": "Format: {category-slug}-{short-slug}-{nn}. Example: flow-login-01"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "flowchart",
+        "architecture",
+        "sequence",
+        "erd",
+        "state",
+        "mind",
+        "org",
+        "network"
+      ]
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": ["easy", "medium", "hard"]
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 10,
+      "description": "자연어 질문. Claude Code에 그대로 전달된다."
+    },
+    "expected": {
+      "type": "object",
+      "required": ["node_count", "edge_count", "required_concepts"],
+      "additionalProperties": false,
+      "properties": {
+        "node_count": {
+          "type": "object",
+          "required": ["min", "max"],
+          "properties": {
+            "min": { "type": "integer", "minimum": 1 },
+            "max": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "edge_count": {
+          "type": "object",
+          "required": ["min", "max"],
+          "properties": {
+            "min": { "type": "integer", "minimum": 0 },
+            "max": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "required_concepts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "레이블에 부분 일치로 확인될 핵심 개념 키워드"
+        },
+        "must_have_branch": {
+          "type": "boolean",
+          "description": "true면 분기(1노드 → 2개 이상 out-edge)가 최소 1곳 있어야 함"
+        },
+        "must_have_loop": {
+          "type": "boolean",
+          "description": "true면 사이클 1개 이상 있어야 함"
+        }
+      }
+    },
+    "rubric_weights": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "structure": { "type": "number", "minimum": 0 },
+        "labels": { "type": "number", "minimum": 0 },
+        "layout": { "type": "number", "minimum": 0 },
+        "readability": { "type": "number", "minimum": 0 },
+        "intent_fit": { "type": "number", "minimum": 0 }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "채점자/검토자 참고 메모. rubric에는 전달되지 않는다."
+    }
+  }
+}
