@@ -46,14 +46,20 @@
 | `results/` | 실행 결과 (gitignore됨) | — |
 | `scripts/codex-runner-brief.md` | Codex 위임용 명세 | 필요 시 |
 
-## 실행 (runner 구현 후)
+## 실행
 
 ```bash
-pnpm --filter drawcast-evals run eval            # n=3 기본
-pnpm --filter drawcast-evals run eval -- --n 5   # 샘플 수 변경
-pnpm --filter drawcast-evals run eval -- --id flow-login-01  # 단일
-pnpm --filter drawcast-evals run eval -- --model-sonnet     # 모델 비교용
+pnpm --filter drawcast-evals eval                    # n=1 기본 (반복 실험용, 20 runs, ~45분)
+pnpm --filter drawcast-evals eval -- --n 3           # baseline 스냅샷 찍을 때 (분산 측정, 60 runs, ~2.5h)
+pnpm --filter drawcast-evals eval -- --id flow-login-01  # 단일 질문
+pnpm --filter drawcast-evals eval -- --category flowchart
+pnpm --filter drawcast-evals eval -- --difficulty easy
+pnpm --filter drawcast-evals eval -- --skip-rubric   # Codex 호출 없이 구조 메트릭만 (rule 트랙만)
+pnpm --filter drawcast-evals eval -- --dry-run       # 스키마/파일 로딩만 확인
 ```
+
+**기본 n=1 이유**: 반복 튜닝(프롬프트·프리셋·MCP 도구 수정 후 재평가)은 가볍게 돌려야 쿼터가 남는다.
+`--n 3`은 공식 baseline 스냅샷을 `evals/baselines/<run-id>/`에 저장할 때만 쓰자.
 
 ## 골든셋 추가 규칙
 

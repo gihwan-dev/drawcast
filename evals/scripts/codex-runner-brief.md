@@ -85,7 +85,7 @@ codex exec --model gpt-5.4 --image <png> \
 - 가중치 적용 후 `total` 계산 (rubrics/default.md의 공식).
 
 ### 단계 6: 샘플링
-- 기본 `n=3`. 각 질문마다 독립 실행.
+- 기본 `n=1`. baseline 스냅샷 찍을 때만 `--n 3`으로 분산까지 측정.
 - 각 샘플은 **새 MCP 서버 프로세스**에서. seed 고정 불가 (Claude Code temperature는 외부 제어 제한적) → 분산으로 받아들이고 min/mean/max를 리포트.
 
 ### 단계 7: 집계 (`summary.json`)
@@ -124,8 +124,8 @@ codex exec --model gpt-5.4 --image <png> \
 ## CLI
 
 ```bash
-pnpm --filter drawcast-evals eval                    # 전체, n=3
-pnpm --filter drawcast-evals eval -- --n 5           # n=5
+pnpm --filter drawcast-evals eval                    # 전체, n=1 기본
+pnpm --filter drawcast-evals eval -- --n 3           # baseline 스냅샷용
 pnpm --filter drawcast-evals eval -- --id flow-login-01
 pnpm --filter drawcast-evals eval -- --category flowchart
 pnpm --filter drawcast-evals eval -- --difficulty easy

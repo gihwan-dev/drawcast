@@ -18,7 +18,12 @@ const program = new Command();
 program
   .name('drawcast-evals')
   .description('Run Drawcast E2E eval samples against the golden set.')
-  .option('--n <number>', 'samples per question', parsePositiveInteger, 3)
+  .option(
+    '--n <number>',
+    'samples per question (default 1; use --n 3 for baseline snapshots)',
+    parsePositiveInteger,
+    1,
+  )
   .option('--id <id>', 'run only one question id')
   .option('--category <category>', 'filter by question category', parseCategory)
   .option('--difficulty <difficulty>', 'filter by difficulty', parseDifficulty)
