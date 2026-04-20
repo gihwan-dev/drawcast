@@ -1,0 +1,158 @@
+{
+  "run_id": "2026-04-20T05-49-59Z",
+  "total_questions": 20,
+  "total_runs": 60,
+  "scored_runs": 44,
+  "pass_rate": 0.75,
+  "by_axis": {
+    "structure": {
+      "mean": 4.477,
+      "std": 0.657
+    },
+    "labels": {
+      "mean": 3.955,
+      "std": 0.706
+    },
+    "layout": {
+      "mean": 2.386,
+      "std": 0.714
+    },
+    "readability": {
+      "mean": 2.068,
+      "std": 0.72
+    },
+    "intent_fit": {
+      "mean": 4.523,
+      "std": 0.657
+    }
+  },
+  "by_category": {
+    "flowchart": {
+      "pass_rate": 0.667,
+      "n": 9
+    },
+    "architecture": {
+      "pass_rate": 0.333,
+      "n": 9
+    },
+    "sequence": {
+      "pass_rate": 1,
+      "n": 8
+    },
+    "erd": {
+      "pass_rate": 1,
+      "n": 6
+    },
+    "state": {
+      "pass_rate": 1,
+      "n": 3
+    },
+    "org": {
+      "pass_rate": 1,
+      "n": 3
+    },
+    "network": {
+      "pass_rate": 0.667,
+      "n": 6
+    }
+  },
+  "by_difficulty": {
+    "easy": {
+      "pass_rate": 0.762,
+      "n": 21
+    },
+    "medium": {
+      "pass_rate": 0.867,
+      "n": 15
+    },
+    "hard": {
+      "pass_rate": 0.5,
+      "n": 8
+    }
+  },
+  "cost_usd": 0,
+  "latency_p50_ms": 101485,
+  "latency_p95_ms": 212630,
+  "failures": [
+    {
+      "id": "flow-signup-02",
+      "sample": 1,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "flow-signup-02",
+      "sample": 2,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "flow-signup-02",
+      "sample": 3,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "flow-ci-04",
+      "sample": 1,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "flow-ci-04",
+      "sample": 2,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "flow-ci-04",
+      "sample": 3,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "arch-cdn-03",
+      "sample": 1,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "arch-cdn-03",
+      "sample": 2,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "arch-cdn-03",
+      "sample": 3,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "seq-saga-03",
+      "sample": 2,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "state-tcp-02",
+      "sample": 1,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "state-tcp-02",
+      "sample": 2,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "state-tcp-02",
+      "sample": 3,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "mind-react-01",
+      "sample": 1,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "mind-react-01",
+      "sample": 2,
+      "reason": "draw_export_missing"
+    },
+    {
+      "id": "mind-react-01",
+      "sample": 3,
+      "reason": "draw_export_missing"
+    }
+  ]
+}
