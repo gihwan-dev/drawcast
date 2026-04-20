@@ -35,6 +35,9 @@ importers:
       '@excalidraw/excalidraw':
         specifier: 0.17.6
         version: 0.17.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.0.4
+        version: 1.29.0(zod@3.25.76)
       commander:
         specifier: ^12.1.0
         version: 12.1.0

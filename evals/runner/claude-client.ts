@@ -29,7 +29,13 @@ export class ClaudeRunError extends Error {
 }
 
 export interface ClaudeRunResult {
-  scene: ExcalidrawScene;
+  /**
+   * Scene parsed from Claude's own draw_export tool call, if it made one.
+   * Optional now: the runner calls draw_export directly after Claude exits
+   * (see runner/mcp-client.ts), so missing voluntary exports no longer fail
+   * the attempt.
+   */
+  scene?: ExcalidrawScene;
   trace: ClaudeTrace;
 }
 
@@ -117,18 +123,11 @@ export async function runClaudeForQuestion(options: {
     );
   }
 
-  if (parsed.drawExportScene === undefined) {
-    throw new ClaudeRunError(
-      'Claude completed without a parseable draw_export result',
-      'draw_export_missing',
-      trace,
-    );
+  const out: ClaudeRunResult = { trace };
+  if (parsed.drawExportScene !== undefined) {
+    out.scene = parsed.drawExportScene;
   }
-
-  return {
-    scene: parsed.drawExportScene,
-    trace,
-  };
+  return out;
 }
 
 function toCommandResult(result: unknown): CommandResult {
@@ -160,10 +159,7 @@ function outputToString(value: unknown): string | undefined {
 export function buildClaudePrompt(questionPrompt: string): string {
   return `${questionPrompt}
 
-[평가 러너 지시 — 반드시 지킬 것]
-1. drawcast MCP 도구(mcp__drawcast__draw_upsert_box, mcp__drawcast__draw_upsert_edge 등)로 다이어그램을 완성한다.
-2. 다이어그램을 다 그린 뒤 **반드시** mcp__drawcast__draw_export 도구를 \`format: "excalidraw"\` 인자로 호출해라. 이 호출이 누락되면 평가 러너가 결과 씬을 수집할 수 없어 이 시도는 실패 처리된다.
-3. mcp__drawcast__draw_export가 성공적으로 반환된 뒤에만 응답을 종료한다. 설명·요약·확인 메시지는 덧붙이지 말 것.`;
+drawcast MCP 도구(mcp__drawcast__draw_upsert_box, mcp__drawcast__draw_upsert_edge 등)로 다이어그램을 완성한 뒤 응답을 종료해라. 완성된 씬은 평가 러너가 MCP에서 직접 수집하므로 draw_export를 따로 호출할 필요는 없다. 설명·요약·확인 메시지는 덧붙이지 말 것.`;
 }
 
 function buildTrace(options: {
