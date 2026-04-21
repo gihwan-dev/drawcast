@@ -96,18 +96,37 @@ describe('buildGraphModel — labelBox size measurement', () => {
     expect(n.height).toBe(MIN_H);
   });
 
-  it('honours an explicit size without remeasuring', () => {
+  it('honours an explicit width but grows height so wrapped text fits', () => {
     const box: LabelBox = {
       kind: 'labelBox',
       id: 'sized' as PrimitiveId,
       shape: 'rectangle',
       size: [200, 80],
-      text: 'x'.repeat(500), // huge text — would blow past 200 if we measured
+      text: 'x'.repeat(500), // huge text — wraps many times at width 200
     };
     const graph = buildGraphModel(makeScene([box]));
     const n = node('sized', graph);
+    // Width stays pinned so the caller's horizontal layout intent is kept.
     expect(n.width).toBe(200);
-    expect(n.height).toBe(80);
+    // Height grows so ELK reserves enough vertical space for the wrapped
+    // glyph run; otherwise the emitted text spills past the reserved box
+    // and collides with neighbouring nodes/edge labels.
+    expect(n.height).toBeGreaterThan(80);
+  });
+
+  it('keeps the declared height when the text already fits', () => {
+    const box: LabelBox = {
+      kind: 'labelBox',
+      id: 'snug' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [120, 40],
+      text: 'ok',
+    };
+    const graph = buildGraphModel(makeScene([box]));
+    const n = node('snug', graph);
+    expect(n.width).toBe(120);
+    expect(n.height).toBe(40);
   });
 
   it('uses the fixed-fit fallback when fit:"fixed" arrives without size', () => {

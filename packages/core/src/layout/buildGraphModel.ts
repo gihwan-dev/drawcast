@@ -11,6 +11,7 @@
 // caller falls back to the synchronous compile path.
 
 import { measureText } from '../measure.js';
+import { wrapText } from '../wrap.js';
 import type { LabelBox, Primitive, Scene } from '../primitives.js';
 import type { Theme } from '../theme.js';
 import type { GraphEdge, GraphModel, GraphNode } from './graph.js';
@@ -120,31 +121,32 @@ function measureLabelBoxSize(
   primitive: LabelBox,
   theme: Theme,
 ): { width: number; height: number } {
-  // fit:'fixed' pins the declared size through emit. Mirror the emit
-  // fallback when size is missing rather than measure (users who opt
-  // into fixed are signalling "don't auto-fit").
-  if (primitive.fit === 'fixed') {
-    if (primitive.size !== undefined) {
-      return { width: primitive.size[0], height: primitive.size[1] };
-    }
-    return { width: FIXED_FALLBACK_WIDTH, height: FIXED_FALLBACK_HEIGHT };
-  }
-
-  // Auto (default). An explicit size wins over measurement so caller
-  // overrides aren't silently discarded.
-  if (primitive.size !== undefined) {
-    return { width: primitive.size[0], height: primitive.size[1] };
-  }
-
-  // No size: measure the raw text and pad, matching emitLabelBox's
-  // own auto-fit rule. Wrapping isn't applied here — we don't yet
-  // know a target max width, so we reserve the whole unwrapped run.
   const fontSize = primitive.fontSize ?? theme.defaultFontSize;
   const fontFamily = primitive.fontFamily ?? theme.defaultFontFamily;
 
-  let width = MIN_LAYOUT_WIDTH;
-  let height = MIN_LAYOUT_HEIGHT;
-  if (primitive.text !== undefined && primitive.text !== '') {
+  let width: number;
+  let height: number;
+
+  if (primitive.fit === 'fixed') {
+    // fit:'fixed' pins the declared width through emit. Mirror the emit
+    // fallback when size is missing rather than measure (users who opt
+    // into fixed are signalling "don't auto-fit" the width).
+    if (primitive.size !== undefined) {
+      width = primitive.size[0];
+      height = primitive.size[1];
+    } else {
+      width = FIXED_FALLBACK_WIDTH;
+      height = FIXED_FALLBACK_HEIGHT;
+    }
+  } else if (primitive.size !== undefined) {
+    // Auto fit but caller handed us an explicit size; don't silently
+    // discard it.
+    width = primitive.size[0];
+    height = primitive.size[1];
+  } else if (primitive.text !== undefined && primitive.text !== '') {
+    // No size: measure the raw text and pad, matching emitLabelBox's
+    // own auto-fit rule. Wrapping isn't applied here — we don't yet
+    // know a target max width, so we reserve the whole unwrapped run.
     const metrics = measureText({
       text: primitive.text,
       fontSize,
@@ -152,6 +154,34 @@ function measureLabelBoxSize(
     });
     width = Math.max(metrics.width + LAYOUT_PADDING * 2, MIN_LAYOUT_WIDTH);
     height = Math.max(metrics.height + LAYOUT_PADDING * 2, MIN_LAYOUT_HEIGHT);
+  } else {
+    width = MIN_LAYOUT_WIDTH;
+    height = MIN_LAYOUT_HEIGHT;
+  }
+
+  // Guarantee the reserved box can contain the wrapped glyph run. A
+  // caller that pins width via fit:'fixed' still expects text to fit;
+  // CJK labels frequently wrap into more lines than the raw height was
+  // sized for, and without this the emit layer renders text spilling
+  // below the shape into nearby edge labels (arch-cdn-03 eval).
+  if (primitive.text !== undefined && primitive.text !== '') {
+    const maxTextWidth = Math.max(width - LAYOUT_PADDING * 2, 1);
+    const wrapped = wrapText({
+      text: primitive.text,
+      maxWidth: maxTextWidth,
+      fontSize,
+      fontFamily,
+    });
+    const wrappedMetrics = measureText({
+      text: wrapped,
+      fontSize,
+      fontFamily,
+    });
+    // Only expand when the wrapped text itself would not fit — the
+    // declared height already includes the caller's preferred padding.
+    if (wrappedMetrics.height > height) {
+      height = wrappedMetrics.height + LAYOUT_PADDING * 2;
+    }
   }
 
   if (primitive.shape !== 'rectangle') {
