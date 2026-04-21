@@ -161,6 +161,209 @@ describe('emitConnector — boundary anchoring (B3)', () => {
     expect(arrow.endBinding?.elementId).toBe(rects[1]!.id);
   });
 
+  it('elbow + horizontal pair: axis-aligned pair collapses to a straight 2-point line', () => {
+    // A and B centres on the same y → elbow would otherwise emit a
+    // degenerate kink on top of itself. Cardinal-port selection picks
+    // E/W and the degenerate-axis guard returns a 2-point polyline.
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 100],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      at: [300, 100],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'B',
+    };
+    const c: Connector = {
+      kind: 'connector',
+      id: 'c' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: 'b' as PrimitiveId,
+      routing: 'elbow',
+    };
+    const result = compile(makeScene([a, b, c]));
+    const arrow = findArrow(result.elements);
+
+    expect(arrow.x).toBe(140);
+    expect(arrow.y).toBe(100);
+    expect(arrow.points).toHaveLength(2);
+    const last = arrow.points[1]!;
+    expect(arrow.x + last[0]).toBe(260);
+    expect(arrow.y + last[1]).toBe(100);
+  });
+
+  it('elbow + vertical pair: leaves the S port and arrives at N, collapses to straight', () => {
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 100],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 300],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'B',
+    };
+    const c: Connector = {
+      kind: 'connector',
+      id: 'c' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: 'b' as PrimitiveId,
+      routing: 'elbow',
+    };
+    const result = compile(makeScene([a, b, c]));
+    const arrow = findArrow(result.elements);
+
+    // A bottom-edge mid (100, 120) → B top-edge mid (100, 280).
+    expect(arrow.x).toBe(100);
+    expect(arrow.y).toBe(120);
+    expect(arrow.points).toHaveLength(2);
+    const last = arrow.points[1]!;
+    expect(arrow.x + last[0]).toBe(100);
+    expect(arrow.y + last[1]).toBe(280);
+  });
+
+  it('elbow + diagonal pair: horizontal-major leaves E, kinks at midX, enters W', () => {
+    // Regression for the "arrow overshoots out of the top edge" bug. When
+    // the source sits lower-left of the target, the previous logic anchored
+    // near the top-right corner of A and then kinked upward, producing the
+    // Z-with-detour seen in the user's flowchart. Cardinal ports plus
+    // horizontal-first routing yield a clean Z: E → midX → up → W.
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 300],
+      fit: 'fixed',
+      size: [160, 60],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      at: [500, 100],
+      fit: 'fixed',
+      size: [160, 60],
+      text: 'B',
+    };
+    const c: Connector = {
+      kind: 'connector',
+      id: 'c' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: 'b' as PrimitiveId,
+      routing: 'elbow',
+    };
+    const result = compile(makeScene([a, b, c]));
+    const arrow = findArrow(result.elements);
+
+    // A right-edge mid (180, 300); B left-edge mid (420, 100).
+    expect(arrow.x).toBe(180);
+    expect(arrow.y).toBe(300);
+    expect(arrow.points).toHaveLength(4);
+
+    const toScene = (p: readonly [number, number]) =>
+      [arrow.x + p[0], arrow.y + p[1]] as const;
+    expect(toScene(arrow.points[0]!)).toEqual([180, 300]);
+    expect(toScene(arrow.points[1]!)).toEqual([300, 300]); // midX, stay on start.y
+    expect(toScene(arrow.points[2]!)).toEqual([300, 100]); // midX, rise to end.y
+    expect(toScene(arrow.points[3]!)).toEqual([420, 100]);
+  });
+
+  it('elbow + vertical-major diagonal: leaves S, kinks at midY, enters N', () => {
+    // Tall pair: |dy| > |dx| → vertical-first routing. Validates that we
+    // do not blindly fall into midX kinking for every elbow.
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 100],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      at: [200, 500],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'B',
+    };
+    const c: Connector = {
+      kind: 'connector',
+      id: 'c' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: 'b' as PrimitiveId,
+      routing: 'elbow',
+    };
+    const result = compile(makeScene([a, b, c]));
+    const arrow = findArrow(result.elements);
+
+    // A bottom-edge mid (100, 120); B top-edge mid (200, 480).
+    expect(arrow.x).toBe(100);
+    expect(arrow.y).toBe(120);
+    expect(arrow.points).toHaveLength(4);
+
+    const toScene = (p: readonly [number, number]) =>
+      [arrow.x + p[0], arrow.y + p[1]] as const;
+    expect(toScene(arrow.points[0]!)).toEqual([100, 120]);
+    expect(toScene(arrow.points[1]!)).toEqual([100, 300]); // start.x, midY
+    expect(toScene(arrow.points[2]!)).toEqual([200, 300]); // end.x, midY
+    expect(toScene(arrow.points[3]!)).toEqual([200, 480]);
+  });
+
+  it('elbow with a raw Point endpoint falls back to the legacy boundary math', () => {
+    // Cardinal-port routing needs both ends bound to a record. When one
+    // side is a free Point the connector keeps the boundary-based anchor
+    // and the |dx| vs |dy| axis fallback so it still produces a sensible
+    // L-bend.
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 100],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'A',
+    };
+    const c: Connector = {
+      kind: 'connector',
+      id: 'c' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: [400, 400],
+      routing: 'elbow',
+    };
+    const result = compile(makeScene([a, c]));
+    const arrow = findArrow(result.elements);
+
+    // boundaryPoint picks the box exit on the A→(400,400) vector; we only
+    // pin that the arrow has 4 elbow points and ends at the raw target.
+    expect(arrow.points.length).toBeGreaterThanOrEqual(2);
+    const last = arrow.points[arrow.points.length - 1]!;
+    expect(arrow.x + last[0]).toBe(400);
+    expect(arrow.y + last[1]).toBe(400);
+    expect(arrow.startBinding).not.toBeNull();
+    expect(arrow.endBinding).toBeNull();
+  });
+
   it('raw Point endpoints are passed through unchanged (no boundary math)', () => {
     const c: Connector = {
       kind: 'connector',
