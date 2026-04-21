@@ -226,7 +226,7 @@ export function emitConnector(p: Connector, ctx: CompileContext): void {
   if (p.label) {
     const labelId = newElementId();
     const fontFamily = style.fontFamily ?? ctx.theme.defaultFontFamily;
-    const fontSize = style.fontSize ?? 16;
+    const fontSize = style.fontSize ?? ctx.theme.defaultFontSize;
     const lineHeight = getLineHeight(fontFamily);
     const metrics = measureText({ text: p.label, fontSize, fontFamily });
     // Midpoint of the raw (pre-normalisation) points: visually unimportant
