@@ -24,6 +24,7 @@ import {
   formatZodError,
   normalizeReturnPreview,
   normalizeStyleRef,
+  normalizeUserText,
 } from './utils.js';
 import { requestScenePreview } from './helpers/preview.js';
 
@@ -139,7 +140,7 @@ export const drawUpsertBox = defineTool({
       id: args.id as PrimitiveId,
       shape: args.shape ?? 'rectangle',
       at: [args.at[0], args.at[1]],
-      ...(args.text !== undefined && { text: args.text }),
+      ...(args.text !== undefined && { text: normalizeUserText(args.text) }),
       ...(args.style !== undefined && { style: normalizeStyleRef(args.style) }),
       ...(args.fit !== undefined && { fit: args.fit }),
       ...(args.size !== undefined && {

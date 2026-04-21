@@ -97,6 +97,25 @@ export const FontFamilySchema = z.union([
 ]);
 
 /**
+ * Convert two-character backslash escapes (`\n`, `\r\n`, `\t`) that LLM
+ * clients commonly emit verbatim inside JSON string arguments into real
+ * control characters. Without this, a tool input like
+ * `"text": "foo\\n(bar)"` renders the literal two-char sequence `\n` instead
+ * of a line break.
+ *
+ * Why: Claude and other LLM clients occasionally over-escape multi-line
+ * labels ("\\n" in the JSON source → two chars backslash+n after parse).
+ * Diagram labels never legitimately contain a literal `\n` sequence, so
+ * unescaping is safe.
+ */
+export function normalizeUserText(text: string): string {
+  return text
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t');
+}
+
+/**
  * Format a zod error for `isError` content. Keeps the message short and
  * targeted — we cannot dump the full pretty-printed tree through an MCP
  * text block because clients vary in how they render newlines.

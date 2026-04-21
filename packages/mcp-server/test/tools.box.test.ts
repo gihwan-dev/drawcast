@@ -46,6 +46,20 @@ describe('draw_upsert_box', () => {
     expect(stored.at).toEqual([100, 200]);
   });
 
+  it('normalises literal "\\n" escape sequences in text into real newlines', async () => {
+    const store = new SceneStore();
+    await drawUpsertBox.execute(
+      {
+        id: 'multi-line',
+        text: '입력 오류 표시\\n(형식 불일치)',
+        at: [0, 0],
+      },
+      store,
+    );
+    const stored = store.getPrimitive(asId('multi-line')) as LabelBox;
+    expect(stored.text).toBe('입력 오류 표시\n(형식 불일치)');
+  });
+
   it('defaults shape to rectangle when omitted', async () => {
     const store = new SceneStore();
     await drawUpsertBox.execute({ id: 'a', at: [0, 0] }, store);

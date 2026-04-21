@@ -22,6 +22,7 @@ import {
   formatZodError,
   normalizeReturnPreview,
   normalizeStyleRef,
+  normalizeUserText,
 } from './utils.js';
 import { requestScenePreview } from './helpers/preview.js';
 
@@ -142,7 +143,7 @@ export const drawUpsertEdge = defineTool({
       id: args.id as PrimitiveId,
       from: resolveEndpoint(args.from),
       to: resolveEndpoint(args.to),
-      ...(args.label !== undefined && { label: args.label }),
+      ...(args.label !== undefined && { label: normalizeUserText(args.label) }),
       ...(args.routing !== undefined && { routing: args.routing }),
       ...(args.arrowhead !== undefined && {
         arrowhead: {

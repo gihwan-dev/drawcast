@@ -22,6 +22,7 @@ import {
   formatZodError,
   normalizeReturnPreview,
   normalizeStyleRef,
+  normalizeUserText,
 } from './utils.js';
 import { requestScenePreview } from './helpers/preview.js';
 
@@ -101,7 +102,7 @@ export const drawUpsertSticky = defineTool({
     const sticky: Sticky = {
       kind: 'sticky',
       id: args.id as PrimitiveId,
-      text: args.text,
+      text: normalizeUserText(args.text),
       at: [args.at[0], args.at[1]],
       ...(args.width !== undefined && { width: args.width }),
       ...(args.style !== undefined && { style: normalizeStyleRef(args.style) }),
