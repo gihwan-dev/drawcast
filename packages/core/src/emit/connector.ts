@@ -633,6 +633,74 @@ function mergeTinyJogs(
   return current;
 }
 
+/**
+ * Rebalance a V-H-V (or H-V-H) 4-point window whose two parallel legs are
+ * very uneven: specifically one parallel leg shorter than `TINY_JOG_LENGTH`
+ * while the middle perpendicular segment is long enough that
+ * `mergeTinyJogs` left the window intact. ELK sometimes pins the crossing
+ * to a near-source (or near-target) channel, which reads as a tiny stub at
+ * one end plus a long stub at the other — and because bound edge labels
+ * sit on the middle segment (`computeLabelAnchor`), the label ends up
+ * visually squished against the source (or target) node instead of between
+ * them (flow-login-01 "성공" branch: legs 10 / 182 / 135 → label at the
+ * 10px stub corner, right under the decision diamond).
+ *
+ * Shift B and C so the crossing runs along the midpoint of A and D on the
+ * parallel axis. Endpoints stay pinned. The shifted path must still clear
+ * every non-endpoint LabelBox; if not, leave the original shape alone so
+ * we don't trade a visual-balance fix for a node-crossing regression.
+ */
+function rebalanceUnevenElbow(
+  points: readonly Point[],
+  excludeIds: ReadonlySet<PrimitiveId>,
+  ctx: CompileContext,
+): Point[] {
+  if (points.length !== 4) return points.map((pt) => [pt[0], pt[1]] as Point);
+  const a = points[0]!;
+  const b = points[1]!;
+  const c = points[2]!;
+  const d = points[3]!;
+  const ab = segmentAxis(a, b);
+  const bc = segmentAxis(b, c);
+  const cd = segmentAxis(c, d);
+  if (ab === null || bc === null || cd === null) {
+    return points.map((pt) => [pt[0], pt[1]] as Point);
+  }
+  if (ab !== cd || bc === ab) {
+    return points.map((pt) => [pt[0], pt[1]] as Point);
+  }
+  const firstLen = ab === 'v' ? Math.abs(b[1] - a[1]) : Math.abs(b[0] - a[0]);
+  const lastLen = cd === 'v' ? Math.abs(d[1] - c[1]) : Math.abs(d[0] - c[0]);
+  const shortLen = Math.min(firstLen, lastLen);
+  const longLen = Math.max(firstLen, lastLen);
+  if (shortLen >= TINY_JOG_LENGTH) {
+    return points.map((pt) => [pt[0], pt[1]] as Point);
+  }
+  if (longLen < TINY_JOG_LENGTH * 2) {
+    return points.map((pt) => [pt[0], pt[1]] as Point);
+  }
+  const midpoint =
+    ab === 'v' ? (a[1] + d[1]) / 2 : (a[0] + d[0]) / 2;
+  const rebalanced: Point[] =
+    ab === 'v'
+      ? [
+          [a[0], a[1]],
+          [a[0], midpoint],
+          [d[0], midpoint],
+          [d[0], d[1]],
+        ]
+      : [
+          [a[0], a[1]],
+          [midpoint, a[1]],
+          [midpoint, d[1]],
+          [d[0], d[1]],
+        ];
+  if (!pathClearOfLabelBoxes(rebalanced, excludeIds, ctx)) {
+    return points.map((pt) => [pt[0], pt[1]] as Point);
+  }
+  return rebalanced;
+}
+
 function buildRawPoints(
   start: Point,
   end: Point,
@@ -761,7 +829,11 @@ export function emitConnector(
     const excludeIds = new Set<PrimitiveId>();
     if (typeof p.from === 'string') excludeIds.add(p.from);
     if (typeof p.to === 'string') excludeIds.add(p.to);
-    rawPoints = mergeTinyJogs(collapseCollinear(raw), excludeIds, ctx);
+    rawPoints = rebalanceUnevenElbow(
+      mergeTinyJogs(collapseCollinear(raw), excludeIds, ctx),
+      excludeIds,
+      ctx,
+    );
   } else {
     let startDir: PortDir | undefined;
     let rawStart: Point;
