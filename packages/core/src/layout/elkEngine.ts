@@ -10,6 +10,7 @@ import ElkConstructor, {
   type ELK,
   type ElkEdgeSection,
   type ElkExtendedEdge,
+  type ElkLabel,
   type ElkNode,
   type ElkPoint,
   type ElkPort,
@@ -84,6 +85,13 @@ const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
   'elk.layered.layering.strategy': 'LONGEST_PATH_SOURCE',
   'elk.layered.cycleBreaking.strategy': 'INTERACTIVE',
+  // Edge labels travel through the graph model carrying measured size
+  // (see buildGraphModel.ts). `edgeLabelSpacing` gives the routing pass
+  // enough perpendicular slack that the label — which Excalidraw pins
+  // to the arrow midpoint at render time — doesn't crash into nodes or
+  // other labels when many feedback edges converge on one target.
+  'elk.layered.spacing.edgeLabelSpacing': '12',
+  'elk.spacing.edgeLabel': '8',
   'elk.randomSeed': '1',
 };
 
@@ -155,11 +163,20 @@ function toElkPort(port: GraphPort): ElkPort {
 }
 
 function toElkEdge(edge: GraphEdge): ElkExtendedEdge {
-  return {
+  const out: ElkExtendedEdge = {
     id: edge.id,
     sources: [edge.sourcePort ?? edge.source],
     targets: [edge.targetPort ?? edge.target],
   };
+  if (edge.label !== undefined) {
+    const label: ElkLabel = {
+      text: edge.label.text,
+      width: edge.label.width,
+      height: edge.label.height,
+    };
+    out.labels = [label];
+  }
+  return out;
 }
 
 function fromElkResult(original: GraphModel, result: ElkNode): LaidOutGraph {
