@@ -52,6 +52,13 @@ export interface Connector extends BaseProps {
     start?: Arrowhead | null;
     end?: Arrowhead | null;
   };
+  /** Pre-computed routed waypoints from an external layout engine
+   *  (ELK in Phase 2). When present — at least two points — the emit
+   *  layer uses these scene coordinates verbatim and skips port
+   *  selection, boundary math, and the built-in elbow kink logic.
+   *  Populated by `applyLayoutToScene`; LLM callers should leave it
+   *  unset and let the layout pipeline own edge geometry. */
+  routedPath?: readonly Point[];
 }
 
 export interface Sticky extends BaseProps {

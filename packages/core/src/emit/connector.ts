@@ -243,21 +243,36 @@ export function emitConnector(p: Connector, ctx: CompileContext): void {
   //    Elbow routing snaps to cardinal ports (side midpoints) so the first
   //    kink extends out of a side rather than a corner. Straight/curved keep
   //    the centre-to-centre boundary hit for visual balance on diagonals.
+  //
+  //    When the primitive carries a `routedPath` we skip all of that: it
+  //    means an external layout engine (ELK) already produced a waypoint
+  //    sequence that avoids node bodies. Using the built-in elbow math on
+  //    top would re-introduce the node-crossing regression the router
+  //    was picked to prevent.
   const fromRes = resolveCenter(p.from, ctx, p.id, 'from');
   const toRes = resolveCenter(p.to, ctx, p.id, 'to');
   let start: Point;
   let end: Point;
-  let startDir: PortDir | undefined;
-  if (routing === 'elbow' && fromRes.record && toRes.record) {
-    const dirs = selectPortDirs(fromRes.center, toRes.center);
-    start = portPoint(fromRes.record, ctx, dirs.fromDir);
-    end = portPoint(toRes.record, ctx, dirs.toDir);
-    startDir = dirs.fromDir;
+  let rawPoints: Point[];
+  if (p.routedPath !== undefined && p.routedPath.length >= 2) {
+    const first = p.routedPath[0]!;
+    const last = p.routedPath[p.routedPath.length - 1]!;
+    start = [first[0], first[1]];
+    end = [last[0], last[1]];
+    rawPoints = p.routedPath.map((pt) => [pt[0], pt[1]] as Point);
   } else {
-    start = fromRes.record ? boundaryPoint(fromRes.record, ctx, toRes.center) : fromRes.center;
-    end = toRes.record ? boundaryPoint(toRes.record, ctx, fromRes.center) : toRes.center;
+    let startDir: PortDir | undefined;
+    if (routing === 'elbow' && fromRes.record && toRes.record) {
+      const dirs = selectPortDirs(fromRes.center, toRes.center);
+      start = portPoint(fromRes.record, ctx, dirs.fromDir);
+      end = portPoint(toRes.record, ctx, dirs.toDir);
+      startDir = dirs.fromDir;
+    } else {
+      start = fromRes.record ? boundaryPoint(fromRes.record, ctx, toRes.center) : fromRes.center;
+      end = toRes.record ? boundaryPoint(toRes.record, ctx, fromRes.center) : toRes.center;
+    }
+    rawPoints = buildRawPoints(start, end, routing, startDir);
   }
-  const rawPoints = buildRawPoints(start, end, routing, startDir);
   const { points, width, height } = normalizePoints(rawPoints);
 
   // 2) Bindings
