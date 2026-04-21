@@ -485,12 +485,14 @@ describe('emitConnector — boundary anchoring (B3)', () => {
     }
     const centerX = label.x + label.width / 2;
     const centerY = label.y + label.height / 2;
-    // After tiny-jog merging the path is [[84,526], [84,239], [281.83,239],
-    // [281.83,229]]. The middle segment is points[1]→points[2] — a long
-    // horizontal at y=239, midpoint (182.915, 239). That IS on the visible
-    // edge; the straight-line endpoint midpoint (182.9, 377.5) is not.
+    // After tiny-jog merging the path would be [[84,526], [84,239],
+    // [281.83,239], [281.83,229]] — but the last V-leg is only 10px so
+    // the rebalance pass shifts the horizontal to the midpoint Y=377.5.
+    // The middle segment (points[1]→points[2]) is the horizontal at
+    // y=377.5, midpoint (182.915, 377.5). Both axes stay on the visible
+    // edge and the label sits midway between source and target.
     expect(centerX).toBeCloseTo(182.915, 5);
-    expect(centerY).toBeCloseTo(239, 5);
+    expect(centerY).toBeCloseTo(377.5, 5);
   });
 
   it('collapses tiny ELK routedPath jogs into an L-shape', () => {
@@ -545,9 +547,111 @@ describe('emitConnector — boundary anchoring (B3)', () => {
     const absolute = arrow.points.map((pt) => [arrow.x + pt[0], arrow.y + pt[1]]);
     expect(absolute[0]).toEqual([84, 526]);
     expect(absolute[3]).toEqual([281.83, 229]);
-    // Intermediate corner picks A's column (x=84) because nothing blocks it.
-    expect(absolute[1]).toEqual([84, 239]);
-    expect(absolute[2]).toEqual([281.83, 239]);
+    // Intermediate corners snap to A's column (x=84) / D's column (x=281.83).
+    // The Y of the horizontal is mid-way between source and target (not
+    // pinned to y=239 near the target) because tiny-jog merging left a
+    // 10px last-V-leg that the rebalance pass pulled to midY=377.5.
+    const midY = (526 + 229) / 2;
+    expect(absolute[1]).toEqual([84, midY]);
+    expect(absolute[2]).toEqual([281.83, midY]);
+  });
+
+  it('rebalances uneven V-H-V routedPath so the label sits between source and target', () => {
+    // flow-login-01 "성공" regression: ELK routes the success branch
+    // off the diamond's bottom-middle with a 10-182-135 leg split. The
+    // tiny first stub puts the horizontal (and its bound label) right
+    // under the decision node instead of midway toward the success box.
+    // The rebalance pass moves the horizontal to mid-Y so the two
+    // vertical legs become equal.
+    const diamond: LabelBox = {
+      kind: 'labelBox',
+      id: 'diamond' as PrimitiveId,
+      shape: 'diamond',
+      at: [235, 289],
+      fit: 'fixed',
+      size: [119, 92],
+      text: 'Q',
+    };
+    const success: LabelBox = {
+      kind: 'labelBox',
+      id: 'success' as PrimitiveId,
+      shape: 'rectangle',
+      at: [30, 526],
+      fit: 'fixed',
+      size: [160, 60],
+      text: 'OK',
+    };
+    const edge: Connector = {
+      kind: 'connector',
+      id: 'edge' as PrimitiveId,
+      from: 'diamond' as PrimitiveId,
+      to: 'success' as PrimitiveId,
+      routing: 'elbow',
+      routedPath: [
+        [295, 381],
+        [295, 391],
+        [110, 391],
+        [110, 526],
+      ],
+    };
+    const result = compile(makeScene([diamond, success, edge]));
+    const arrow = findArrow(result.elements);
+    expect(arrow.points).toHaveLength(4);
+    const absolute = arrow.points.map((pt) => [arrow.x + pt[0], arrow.y + pt[1]]);
+    // Endpoints preserved — bindings still land on their shapes.
+    expect(absolute[0]).toEqual([295, 381]);
+    expect(absolute[3]).toEqual([110, 526]);
+    // Crossing moved to the midpoint Y so the horizontal leg centres
+    // the bound label between source and target.
+    const midY = (381 + 526) / 2;
+    expect(absolute[1]).toEqual([295, midY]);
+    expect(absolute[2]).toEqual([110, midY]);
+  });
+
+  it('leaves a balanced V-H-V routedPath alone', () => {
+    // Guard against over-eager rebalancing: when ELK already produces a
+    // symmetric L-bend (both vertical legs longer than TINY_JOG_LENGTH)
+    // the output should pass through unchanged.
+    const source: LabelBox = {
+      kind: 'labelBox',
+      id: 'src' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 100],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'A',
+    };
+    const target: LabelBox = {
+      kind: 'labelBox',
+      id: 'tgt' as PrimitiveId,
+      shape: 'rectangle',
+      at: [300, 300],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'B',
+    };
+    const edge: Connector = {
+      kind: 'connector',
+      id: 'edge' as PrimitiveId,
+      from: 'src' as PrimitiveId,
+      to: 'tgt' as PrimitiveId,
+      routing: 'elbow',
+      routedPath: [
+        [140, 140],
+        [140, 220],
+        [340, 220],
+        [340, 300],
+      ],
+    };
+    const result = compile(makeScene([source, target, edge]));
+    const arrow = findArrow(result.elements);
+    const absolute = arrow.points.map((pt) => [arrow.x + pt[0], arrow.y + pt[1]]);
+    expect(absolute).toEqual([
+      [140, 140],
+      [140, 220],
+      [340, 220],
+      [340, 300],
+    ]);
   });
 
   it('raw Point endpoints are passed through unchanged (no boundary math)', () => {
