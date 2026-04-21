@@ -236,6 +236,15 @@ function canonicaliseDirection(dx: number, dy: number): [number, number] {
 // the polyline midpoint) don't visually touch the bypassed node.
 const OBSTACLE_DETOUR_MARGIN = 20;
 
+// Perpendicular jog shorter than this is treated as a visual kink rather than
+// a meaningful bend. ELK routing sometimes stitches adjacent channels with a
+// few-pixel offset (e.g. flow-login-01 "재시도" edge: 9px horizontal between
+// two tall verticals) that reads as a double bend at the same corner; the VLM
+// rubric has flagged this specifically. 16px is safely below the smallest
+// single-character label height (~25px) so any real orthogonal segment that
+// separates labelled channels is preserved.
+const TINY_JOG_LENGTH = 16;
+
 interface ObstacleBBox {
   x: number;
   y: number;
@@ -506,6 +515,124 @@ function detourAroundObstacle(
   ];
 }
 
+type SegmentAxis = 'h' | 'v' | null;
+
+function segmentAxis(a: Point, b: Point): SegmentAxis {
+  const dx = Math.abs(a[0] - b[0]);
+  const dy = Math.abs(a[1] - b[1]);
+  if (dx < 1e-6 && dy > 1e-6) return 'v';
+  if (dy < 1e-6 && dx > 1e-6) return 'h';
+  return null;
+}
+
+function pathClearOfLabelBoxes(
+  points: readonly Point[],
+  excludeIds: ReadonlySet<PrimitiveId>,
+  ctx: CompileContext,
+): boolean {
+  for (const [id, record] of ctx.registry) {
+    if (excludeIds.has(id)) continue;
+    if (record.kind !== 'labelBox') continue;
+    for (let i = 0; i < points.length - 1; i += 1) {
+      if (segmentCrossesBBoxInterior(points[i]!, points[i + 1]!, record.bbox)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/**
+ * Collapse three consecutive points P0-P1-P2 where P0→P1 and P1→P2 share the
+ * same direction (collinear and same sign). ELK routing never emits these on
+ * its own, but orthogonal-jog merging below can introduce them (shifting a
+ * short perpendicular step into the same line as a neighbouring segment).
+ * Endpoints are always preserved.
+ */
+function collapseCollinear(points: readonly Point[]): Point[] {
+  if (points.length < 3) return points.map((pt) => [pt[0], pt[1]] as Point);
+  const result: Point[] = [[points[0]![0], points[0]![1]]];
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const prev = result[result.length - 1]!;
+    const curr = points[i]!;
+    const next = points[i + 1]!;
+    const d1x = curr[0] - prev[0];
+    const d1y = curr[1] - prev[1];
+    const d2x = next[0] - curr[0];
+    const d2y = next[1] - curr[1];
+    const cross = d1x * d2y - d1y * d2x;
+    const dot = d1x * d2x + d1y * d2y;
+    if (Math.abs(cross) < 1e-6 && dot > 0) continue;
+    result.push([curr[0], curr[1]]);
+  }
+  const last = points[points.length - 1]!;
+  result.push([last[0], last[1]]);
+  return result;
+}
+
+/**
+ * Merge tiny orthogonal jogs in an ELK-routed polyline. A jog is a 4-point
+ * window A-B-C-D where A→B and C→D are parallel (both horizontal or both
+ * vertical) and B→C is a perpendicular segment shorter than
+ * `TINY_JOG_LENGTH`. Visually this reads as a doubled kink at the same
+ * corner. We replace it with a single-bend L-shape via either A's column or
+ * D's column, picking whichever variant doesn't cross another node's bbox.
+ *
+ * Endpoints (index 0 and last) are preserved so bindings remain intact. On
+ * every successful merge we re-run collinear collapse because the neighbour
+ * segments often become colinear after the shift (the eval-hit case reduces
+ * from 6 points to 4 points in one pass).
+ */
+function mergeTinyJogs(
+  points: readonly Point[],
+  excludeIds: ReadonlySet<PrimitiveId>,
+  ctx: CompileContext,
+): Point[] {
+  let current: Point[] = points.map((pt) => [pt[0], pt[1]] as Point);
+  let safetyCounter = current.length * 4;
+  for (;;) {
+    if (safetyCounter-- <= 0) break;
+    if (current.length < 4) break;
+    let mutated = false;
+    for (let i = 0; i <= current.length - 4; i += 1) {
+      const a = current[i]!;
+      const b = current[i + 1]!;
+      const c = current[i + 2]!;
+      const d = current[i + 3]!;
+      const ab = segmentAxis(a, b);
+      const bc = segmentAxis(b, c);
+      const cd = segmentAxis(c, d);
+      if (ab === null || bc === null || cd === null) continue;
+      if (ab !== cd) continue;
+      if (bc === ab) continue;
+      const jogLen = ab === 'v' ? Math.abs(c[0] - b[0]) : Math.abs(c[1] - b[1]);
+      if (jogLen >= TINY_JOG_LENGTH) continue;
+      const viaA: Point[] =
+        ab === 'v'
+          ? [a, [a[0], d[1]], d]
+          : [a, [d[0], a[1]], d];
+      const viaD: Point[] =
+        ab === 'v'
+          ? [a, [d[0], a[1]], d]
+          : [a, [a[0], d[1]], d];
+      let picked: Point[] | null = null;
+      if (pathClearOfLabelBoxes(viaA, excludeIds, ctx)) picked = viaA;
+      else if (pathClearOfLabelBoxes(viaD, excludeIds, ctx)) picked = viaD;
+      if (picked === null) continue;
+      current = [
+        ...current.slice(0, i),
+        ...picked.map((pt) => [pt[0], pt[1]] as Point),
+        ...current.slice(i + 4),
+      ];
+      current = collapseCollinear(current);
+      mutated = true;
+      break;
+    }
+    if (!mutated) break;
+  }
+  return current;
+}
+
 function buildRawPoints(
   start: Point,
   end: Point,
@@ -626,7 +753,15 @@ export function emitConnector(
     const last = p.routedPath[p.routedPath.length - 1]!;
     start = [first[0], first[1]];
     end = [last[0], last[1]];
-    rawPoints = p.routedPath.map((pt) => [pt[0], pt[1]] as Point);
+    const raw = p.routedPath.map((pt) => [pt[0], pt[1]] as Point);
+    // Collapse any collinear pairs ELK emitted as-is, then merge tiny
+    // perpendicular jogs that read as a doubled corner (flow-login-01
+    // "재시도" case). The obstacle check reuses the labelBox registry so
+    // we never shift a column onto another node's body.
+    const excludeIds = new Set<PrimitiveId>();
+    if (typeof p.from === 'string') excludeIds.add(p.from);
+    if (typeof p.to === 'string') excludeIds.add(p.to);
+    rawPoints = mergeTinyJogs(collapseCollinear(raw), excludeIds, ctx);
   } else {
     let startDir: PortDir | undefined;
     let rawStart: Point;

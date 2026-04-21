@@ -427,14 +427,14 @@ describe('emitConnector — boundary anchoring (B3)', () => {
   });
 
   it('routedPath label anchors on the middle segment, not the endpoint midpoint', () => {
-    // Regression for "재시도" / feedback-edge labels floating off-path. A
-    // 6-point ELK-routed feedback edge has endpoints far apart horizontally
-    // (~200px) but the actual drawn path runs as a narrow L along x≈9.
-    // The straight-line midpoint would land at x≈99 in open space; the
-    // real edge has no ink there and readers can't tell which arrow the
-    // label belongs to. Anchoring on the middle segment (matching
-    // Excalidraw 0.17.x's own bound-text logic) keeps the label on the
-    // segment that carries the edge.
+    // Regression for "재시도" / feedback-edge labels floating off-path.
+    // The ELK-routed feedback edge comes in as 6 points with a 9px
+    // horizontal jog between two parallel verticals; tiny-jog merging
+    // collapses it to a clean 4-point L ([84,526]→[84,239]→[281.83,239]
+    // →[281.83,229]) whose middle segment is the long horizontal at
+    // y=239. The label must land on that visible segment, NOT on the
+    // straight-line midpoint (182.9, 377.5) between the endpoints —
+    // which falls off every segment of the simplified path.
     const a: LabelBox = {
       kind: 'labelBox',
       id: 'a' as PrimitiveId,
@@ -485,11 +485,69 @@ describe('emitConnector — boundary anchoring (B3)', () => {
     }
     const centerX = label.x + label.width / 2;
     const centerY = label.y + label.height / 2;
-    // Middle segment of the 6-point path is points[2]→points[3] = (93,476)→(93,239).
-    // Midpoint = (93, 357.5). The straight-line midpoint between waypoints[0]
-    // and waypoints[5] would be (182.9, 377.5) — off in open space.
-    expect(centerX).toBe(93);
-    expect(centerY).toBeCloseTo(357.5, 5);
+    // After tiny-jog merging the path is [[84,526], [84,239], [281.83,239],
+    // [281.83,229]]. The middle segment is points[1]→points[2] — a long
+    // horizontal at y=239, midpoint (182.915, 239). That IS on the visible
+    // edge; the straight-line endpoint midpoint (182.9, 377.5) is not.
+    expect(centerX).toBeCloseTo(182.915, 5);
+    expect(centerY).toBeCloseTo(239, 5);
+  });
+
+  it('collapses tiny ELK routedPath jogs into an L-shape', () => {
+    // Direct coverage for the flow-login-01 regression: a 6-point retry
+    // edge with a 9px horizontal jog at y=476 should emit as 4 points
+    // after simplification (one clean L via the left column). The path
+    // starts at the left edge of the source box and ends on the bottom
+    // of the target box; no obstacle sits on the shifted column so the
+    // via-A candidate is chosen.
+    const source: LabelBox = {
+      kind: 'labelBox',
+      id: 'src' as PrimitiveId,
+      shape: 'rectangle',
+      at: [140, 530],
+      fit: 'fixed',
+      size: [120, 40],
+      text: 'SRC',
+    };
+    const target: LabelBox = {
+      kind: 'labelBox',
+      id: 'tgt' as PrimitiveId,
+      shape: 'rectangle',
+      at: [300, 200],
+      fit: 'fixed',
+      size: [240, 60],
+      text: 'TGT',
+    };
+    const retry: Connector = {
+      kind: 'connector',
+      id: 'retry' as PrimitiveId,
+      from: 'src' as PrimitiveId,
+      to: 'tgt' as PrimitiveId,
+      routing: 'elbow',
+      routedPath: [
+        [84, 526],
+        [84, 476],
+        [93, 476],
+        [93, 239],
+        [281.83, 239],
+        [281.83, 229],
+      ],
+    };
+    const result = compile(makeScene([source, target, retry]));
+    const arrow = result.elements.find(
+      (el): el is { type: 'arrow'; x: number; y: number; points: number[][] } =>
+        el.type === 'arrow',
+    );
+    if (arrow === undefined) throw new Error('expected arrow element');
+    // 4 points: start, one bend, horizontal landing, arrowhead.
+    expect(arrow.points).toHaveLength(4);
+    // Start and end preserved so the bindings still land on the bound shapes.
+    const absolute = arrow.points.map((pt) => [arrow.x + pt[0], arrow.y + pt[1]]);
+    expect(absolute[0]).toEqual([84, 526]);
+    expect(absolute[3]).toEqual([281.83, 229]);
+    // Intermediate corner picks A's column (x=84) because nothing blocks it.
+    expect(absolute[1]).toEqual([84, 239]);
+    expect(absolute[2]).toEqual([281.83, 239]);
   });
 
   it('raw Point endpoints are passed through unchanged (no boundary math)', () => {
