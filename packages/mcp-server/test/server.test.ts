@@ -68,6 +68,15 @@ describe('createServer', () => {
     await client.close();
   });
 
+  it('advertises layout instructions in the initialize response', async () => {
+    const { client } = await connectPair();
+    const instructions = client.getInstructions();
+    expect(typeof instructions).toBe('string');
+    expect(instructions).toMatch(/elbow/);
+    expect(instructions).toMatch(/layout/i);
+    await client.close();
+  });
+
   it('returns an isError response when tools/call hits an unknown tool', async () => {
     const { client } = await connectPair({ tools: [] });
     const result = await client.callTool({
