@@ -33,7 +33,8 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use serde_json::{json, Value as JsonValue};
-use tauri::{AppHandle, Emitter};
+use tauri::path::BaseDirectory;
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, Command};
 use tokio::sync::{oneshot, Mutex};
@@ -114,6 +115,28 @@ impl ChatHost {
             })?;
             cmd.arg("--mcp-config")
                 .arg(mcp_config_path.to_string_lossy().to_string());
+        }
+
+        // Append drawcast's diagram-generation guideline to Claude's default
+        // system prompt. Non-fatal: if the bundled resource can't be read we
+        // fall back to Claude's default behaviour and log a dev-console
+        // warning so the missing file shows up without blocking chat.
+        match load_bundled_system_prompt(app) {
+            Ok(prompt) => {
+                cmd.arg("--append-system-prompt").arg(prompt);
+            }
+            Err(err) => {
+                let _ = app.emit(
+                    "chat-raw-line",
+                    json!({
+                        "stream": "stderr",
+                        "line": format!(
+                            "drawcast: system prompt resource unavailable ({err}); \
+                             continuing with Claude default"
+                        ),
+                    }),
+                );
+            }
         }
 
         cmd.kill_on_drop(true);
@@ -335,6 +358,36 @@ fn expand_tilde(raw: &str) -> PathBuf {
     PathBuf::from(raw)
 }
 
+/// Relative path (inside the Tauri resource dir) of the bundled guideline.
+/// Kept as a constant so tests and the spawn path can't drift.
+const SYSTEM_PROMPT_RESOURCE: &str = "resources/system-prompt.md";
+
+/// Read the bundled drawcast system prompt out of the Tauri resource dir.
+///
+/// Dev builds resolve against `src-tauri/`; packaged builds resolve against
+/// the platform-specific `Resources/` directory that Tauri populates from
+/// `tauri.conf.json` → `bundle.resources`. An empty file is treated as a
+/// misconfiguration so we don't feed a zero-length string to
+/// `--append-system-prompt` (Claude CLI rejects it).
+fn load_bundled_system_prompt(app: &AppHandle) -> Result<String> {
+    let path = app
+        .path()
+        .resolve(SYSTEM_PROMPT_RESOURCE, BaseDirectory::Resource)
+        .with_context(|| format!("resolve resource {SYSTEM_PROMPT_RESOURCE}"))?;
+    read_system_prompt_file(&path)
+}
+
+/// Pure helper split out for unit tests — reads and validates the prompt
+/// file independently of Tauri's resource resolver.
+fn read_system_prompt_file(path: &Path) -> Result<String> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("read {}", path.display()))?;
+    if raw.trim().is_empty() {
+        return Err(anyhow!("system prompt file is empty: {}", path.display()));
+    }
+    Ok(raw)
+}
+
 fn write_mcp_config(path: &Path, sidecar_port: u16) -> Result<()> {
     let cfg = json!({
         "mcpServers": {
@@ -365,6 +418,49 @@ mod tests {
     fn expand_tilde_passes_absolute_paths_through() {
         let expanded = expand_tilde("/absolute/path");
         assert_eq!(expanded, PathBuf::from("/absolute/path"));
+    }
+
+    #[test]
+    fn read_system_prompt_file_returns_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("system-prompt.md");
+        std::fs::write(&path, "drawcast agent guideline\n").unwrap();
+        let content = read_system_prompt_file(&path).unwrap();
+        assert!(content.contains("drawcast agent guideline"));
+    }
+
+    #[test]
+    fn read_system_prompt_file_rejects_empty_and_whitespace_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let empty = dir.path().join("empty.md");
+        std::fs::write(&empty, "").unwrap();
+        assert!(read_system_prompt_file(&empty).is_err());
+
+        let blank = dir.path().join("blank.md");
+        std::fs::write(&blank, "\n  \t\n").unwrap();
+        assert!(read_system_prompt_file(&blank).is_err());
+    }
+
+    #[test]
+    fn read_system_prompt_file_errors_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("does-not-exist.md");
+        assert!(read_system_prompt_file(&missing).is_err());
+    }
+
+    #[test]
+    fn bundled_system_prompt_resource_is_valid() {
+        // The real file shipped with the crate — guards against an empty
+        // commit or accidental deletion of the resource.
+        let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let path = crate_root.join(SYSTEM_PROMPT_RESOURCE);
+        let content = read_system_prompt_file(&path).unwrap_or_else(|e| {
+            panic!("bundled system prompt must load: {e}")
+        });
+        assert!(
+            content.contains("drawcast-system-prompt version"),
+            "system-prompt.md must carry the versioned header comment"
+        );
     }
 
     #[test]
