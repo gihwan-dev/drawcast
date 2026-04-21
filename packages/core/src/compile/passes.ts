@@ -3,11 +3,11 @@
 // grouping BOTH require positional emit to have registered primitives.
 // See docs/03 §15-31.
 
-import type { Scene } from '../primitives.js';
+import type { Connector, PrimitiveId, Scene } from '../primitives.js';
 import type { CompileContext } from './context.js';
 import { emitLabelBox } from '../emit/labelBox.js';
 import { emitSticky } from '../emit/sticky.js';
-import { emitConnector } from '../emit/connector.js';
+import { emitConnector, type ConnectorLane } from '../emit/connector.js';
 import { applyGroup } from '../emit/group.js';
 import { emitFrame, applyFrameChildren } from '../emit/frame.js';
 import { emitLine } from '../emit/line.js';
@@ -57,11 +57,55 @@ export function passPositional(scene: Scene, ctx: CompileContext): void {
 /**
  * Pass 2 — "Relational": emit connectors now that every bindable primitive
  * has a registry entry.
+ *
+ * Before emitting, we bucket connectors by their unordered endpoint pair so
+ * each emitter gets a {index, count} lane assignment. Parallel connectors
+ * (multiple edges between the same two shapes — including bidirectional
+ * pairs) are then offset perpendicular to the arrow direction so their lines
+ * and labels don't overlap in the exported scene.
  */
 export function passRelational(scene: Scene, ctx: CompileContext): void {
+  const connectors: Connector[] = [];
   for (const p of scene.primitives.values()) {
-    if (p.kind === 'connector') emitConnector(p, ctx);
+    if (p.kind === 'connector') connectors.push(p);
   }
+
+  const lanes = assignConnectorLanes(connectors);
+  for (const p of connectors) {
+    emitConnector(p, ctx, lanes.get(p.id));
+  }
+}
+
+function assignConnectorLanes(
+  connectors: readonly Connector[],
+): Map<PrimitiveId, ConnectorLane> {
+  const groups = new Map<string, Connector[]>();
+  for (const c of connectors) {
+    const key = pairKey(c);
+    if (key === null) continue;
+    const list = groups.get(key);
+    if (list) {
+      list.push(c);
+    } else {
+      groups.set(key, [c]);
+    }
+  }
+
+  const lanes = new Map<PrimitiveId, ConnectorLane>();
+  for (const list of groups.values()) {
+    if (list.length <= 1) continue;
+    list.forEach((c, index) => {
+      lanes.set(c.id, { index, count: list.length });
+    });
+  }
+  return lanes;
+}
+
+function pairKey(c: Connector): string | null {
+  const from = typeof c.from === 'string' ? c.from : null;
+  const to = typeof c.to === 'string' ? c.to : null;
+  if (from === null || to === null) return null;
+  return from < to ? `${from}\u0000${to}` : `${to}\u0000${from}`;
 }
 
 /**

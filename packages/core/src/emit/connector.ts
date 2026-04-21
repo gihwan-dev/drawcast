@@ -28,6 +28,26 @@ import { normalizePoints } from './shared/points.js';
 // Matches Excalidraw 0.17.x's minimum gap from calculateFocusAndGap().
 const DEFAULT_GAP = 1;
 
+// Perpendicular spacing between parallel connectors sharing an endpoint pair.
+// Chosen to exceed typical label widths (~100px for short Korean/English
+// edge labels) because Excalidraw repositions bound arrow labels onto each
+// arrow's midpoint at render time — axis-offsets we store are ignored, so
+// the perpendicular arrow offset is the only way to separate labels.
+const PARALLEL_LANE_SPACING = 120;
+
+// Residual axis offset kept for non-bound scenarios (e.g. free Point→Point
+// connectors whose labels are not repositioned by Excalidraw's bound-text
+// logic). Safe to keep modest since the perpendicular offset does the heavy
+// lifting for the common shape-to-shape case.
+const PARALLEL_LABEL_AXIS_OFFSET = 0.15;
+
+export interface ConnectorLane {
+  /** 0-based index of this connector within its parallel group. */
+  index: number;
+  /** Total connectors sharing the same unordered endpoint pair. */
+  count: number;
+}
+
 function centerOfRecord(record: PrimitiveRecord): Point {
   return [record.bbox.x + record.bbox.w / 2, record.bbox.y + record.bbox.h / 2];
 }
@@ -102,6 +122,42 @@ function resolveCenter(
   return { center: centerOfRecord(record), record };
 }
 
+// Shift both endpoints perpendicular to the arrow direction so parallel
+// connectors between the same pair of shapes render on separate lines.
+// When `lane` is undefined or count<=1, the endpoints are returned unchanged.
+function applyLaneOffset(
+  start: Point,
+  end: Point,
+  lane: ConnectorLane | undefined,
+): [Point, Point] {
+  if (!lane || lane.count <= 1) return [start, end];
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return [start, end];
+  // Symmetric lane positions around the centerline: 2 lanes -> ±spacing/2,
+  // 3 lanes -> -spacing, 0, +spacing, etc.
+  const offset = (lane.index - (lane.count - 1) / 2) * PARALLEL_LANE_SPACING;
+  if (offset === 0) return [start, end];
+  // Canonicalise the direction so opposite-direction connectors in the same
+  // pair derive the *same* perpendicular axis; otherwise a positive offset
+  // for one arrow and a negative offset for its reverse twin cancel out and
+  // both arrows land back on the centerline.
+  const [cdx, cdy] = canonicaliseDirection(dx, dy);
+  const nx = -cdy / len;
+  const ny = cdx / len;
+  return [
+    [start[0] + nx * offset, start[1] + ny * offset],
+    [end[0] + nx * offset, end[1] + ny * offset],
+  ];
+}
+
+function canonicaliseDirection(dx: number, dy: number): [number, number] {
+  if (dx > 0) return [dx, dy];
+  if (dx < 0) return [-dx, -dy];
+  return dy >= 0 ? [dx, dy] : [-dx, -dy];
+}
+
 function buildRawPoints(
   start: Point,
   end: Point,
@@ -165,7 +221,11 @@ function buildBinding(
   };
 }
 
-export function emitConnector(p: Connector, ctx: CompileContext): void {
+export function emitConnector(
+  p: Connector,
+  ctx: CompileContext,
+  lane?: ConnectorLane,
+): void {
   const style = resolveEdgeStyle(p.style, ctx.theme, p.id, ctx);
   const routing = p.routing ?? 'straight';
 
@@ -173,8 +233,9 @@ export function emitConnector(p: Connector, ctx: CompileContext): void {
   //    the boundary now because Excalidraw 0.17.x renders exactly these points.
   const fromRes = resolveCenter(p.from, ctx, p.id, 'from');
   const toRes = resolveCenter(p.to, ctx, p.id, 'to');
-  const start = fromRes.record ? boundaryPoint(fromRes.record, ctx, toRes.center) : fromRes.center;
-  const end = toRes.record ? boundaryPoint(toRes.record, ctx, fromRes.center) : toRes.center;
+  const rawStart = fromRes.record ? boundaryPoint(fromRes.record, ctx, toRes.center) : fromRes.center;
+  const rawEnd = toRes.record ? boundaryPoint(toRes.record, ctx, fromRes.center) : toRes.center;
+  const [start, end] = applyLaneOffset(rawStart, rawEnd, lane);
   const rawPoints = buildRawPoints(start, end, routing);
   const { points, width, height } = normalizePoints(rawPoints);
 
@@ -229,10 +290,29 @@ export function emitConnector(p: Connector, ctx: CompileContext): void {
     const fontSize = style.fontSize ?? ctx.theme.defaultFontSize;
     const lineHeight = getLineHeight(fontFamily);
     const metrics = measureText({ text: p.label, fontSize, fontFamily });
-    // Midpoint of the raw (pre-normalisation) points: visually unimportant
-    // because Excalidraw repositions bound arrow labels on first render.
-    const midX = (start[0] + end[0]) / 2;
-    const midY = (start[1] + end[1]) / 2;
+    // Midpoint of the (shifted) endpoints. For parallel connectors we also
+    // slide the label along the pair's *canonical* axis so opposite-direction
+    // labels don't land at identical coordinates (midpoint ± offset along
+    // each arrow's own direction cancels out — the two arrows share a
+    // midpoint). Using the canonical axis breaks that symmetry.
+    const mx = (start[0] + end[0]) / 2;
+    const my = (start[1] + end[1]) / 2;
+    const dxFull = end[0] - start[0];
+    const dyFull = end[1] - start[1];
+    const lenFull = Math.hypot(dxFull, dyFull);
+    let midX = mx;
+    let midY = my;
+    if (lane && lane.count > 1 && lenFull >= 1) {
+      const [cdx, cdy] = canonicaliseDirection(dxFull, dyFull);
+      const ux = cdx / lenFull;
+      const uy = cdy / lenFull;
+      const axisShift =
+        PARALLEL_LABEL_AXIS_OFFSET *
+        (lane.index - (lane.count - 1) / 2) *
+        lenFull;
+      midX = mx + ux * axisShift;
+      midY = my + uy * axisShift;
+    }
 
     const labelBase = baseElementFields({
       id: labelId,
