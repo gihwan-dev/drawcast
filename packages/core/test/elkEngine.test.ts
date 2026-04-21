@@ -83,6 +83,41 @@ describe('ElkLayoutEngine', () => {
     }
   });
 
+  it('anchors source nodes to the top layer even when a retry loop targets an early node', async () => {
+    // Regression guard for the eval finding that "start" nodes landed at
+    // the bottom of flowcharts containing a retry loop (e.g. a "retry?"
+    // decision node edge that targets the input node). With ELK's default
+    // NETWORK_SIMPLEX layering the source could be demoted to a lower
+    // layer because that minimises total edge length; LONGEST_PATH_SOURCE
+    // pins it to layer 0.
+    const engine = new ElkLayoutEngine();
+    const graph: GraphModel = {
+      id: 'scene',
+      diagramType: 'flowchart',
+      children: [
+        { id: 'start', primitiveIds: ['start'], width: 120, height: 60 },
+        { id: 'input', primitiveIds: ['input'], width: 120, height: 60 },
+        { id: 'decide', primitiveIds: ['decide'], width: 120, height: 60 },
+        { id: 'retry', primitiveIds: ['retry'], width: 120, height: 60 },
+        { id: 'done', primitiveIds: ['done'], width: 120, height: 60 },
+      ],
+      edges: [
+        { id: 'e1', source: 'start', target: 'input' },
+        { id: 'e2', source: 'input', target: 'decide' },
+        { id: 'e3', source: 'decide', target: 'retry' },
+        { id: 'e4', source: 'decide', target: 'done' },
+        { id: 'e5', source: 'retry', target: 'input' },
+      ],
+    };
+    const result = await engine.layout(graph);
+    const byId = new Map(result.children.map((n) => [n.id, n]));
+    const start = byId.get('start')!;
+    for (const id of ['input', 'decide', 'retry', 'done']) {
+      const other = byId.get(id)!;
+      expect(start.y).toBeLessThan(other.y);
+    }
+  });
+
   it('accepts fixedPosition input without failing layout', async () => {
     // Layered algorithm recomputes positions globally and only treats
     // `elk.position` as a soft hint, so we don't yet guarantee the

@@ -54,7 +54,16 @@ const ALGORITHM_BY_TYPE: Record<DiagramType, string> = {
 
 /** Baseline layout options. Values kept as strings because ELK's JSON
  *  options dict expects strings regardless of the underlying numeric
- *  type. `elk.randomSeed` pins determinism per docs §2.4. */
+ *  type. `elk.randomSeed` pins determinism per docs §2.4.
+ *
+ *  `layering.strategy=LONGEST_PATH_SOURCE` anchors every source node
+ *  (incoming-edge count == 0, e.g. the "start" primitive in a flowchart)
+ *  to the first layer. ELK's default `NETWORK_SIMPLEX` minimises total
+ *  edge length and, in graphs with retry loops (e.g. "재시도? → 입력"),
+ *  happily demotes the source to a middle/bottom layer — which rubric
+ *  reviewers consistently flagged as an unnatural flow. This strategy
+ *  does not depend on Claude's node-definition order, so it's stable
+ *  across the non-deterministic AI output. */
 const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   'elk.algorithm': 'layered',
   'elk.direction': 'DOWN',
@@ -62,6 +71,7 @@ const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   'elk.layered.spacing.nodeNodeBetweenLayers': '60',
   'elk.edgeRouting': 'ORTHOGONAL',
   'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+  'elk.layered.layering.strategy': 'LONGEST_PATH_SOURCE',
   'elk.randomSeed': '1',
 };
 
