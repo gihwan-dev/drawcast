@@ -230,6 +230,177 @@ function canonicaliseDirection(dx: number, dy: number): [number, number] {
   return dy >= 0 ? [dx, dy] : [-dx, -dy];
 }
 
+// Margin added on top of an obstacle's bbox when detouring an axis-aligned
+// straight connector around it. Chosen to leave a visible gap between the
+// detoured line and the node edge so edge labels (which Excalidraw pins to
+// the polyline midpoint) don't visually touch the bypassed node.
+const OBSTACLE_DETOUR_MARGIN = 20;
+
+interface ObstacleBBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Liang–Barsky strict-interior test: does the segment `start → end` cross
+ * the interior of `b`, or only graze an edge? Returns true iff there is a
+ * sub-segment of non-trivial length lying strictly inside the bbox. Grazes
+ * and touches return false, so a connector whose endpoint sits flush with
+ * an obstacle edge (the normal boundary-to-boundary anchoring) doesn't
+ * trigger a detour.
+ */
+function segmentCrossesBBoxInterior(
+  start: Point,
+  end: Point,
+  b: ObstacleBBox,
+): boolean {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  let t0 = 0;
+  let t1 = 1;
+  const clip = (p: number, q: number): boolean => {
+    if (Math.abs(p) < 1e-9) {
+      // Segment is parallel to this clip edge; inside iff q >= 0.
+      return q >= 0;
+    }
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) return false;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return false;
+      if (r < t1) t1 = r;
+    }
+    return true;
+  };
+  if (!clip(-dx, start[0] - b.x)) return false;
+  if (!clip(dx, b.x + b.w - start[0])) return false;
+  if (!clip(-dy, start[1] - b.y)) return false;
+  if (!clip(dy, b.y + b.h - start[1])) return false;
+  // Require a non-trivial interior slice: excludes pure edge-grazes and
+  // segments that only touch a corner.
+  return t1 - t0 > 1e-3 && t0 < 1 - 1e-3 && t1 > 1e-3;
+}
+
+/**
+ * Scan the registry for a LabelBox whose bbox strictly crosses the straight
+ * segment from `start` to `end`, ignoring the endpoint-owning primitives
+ * themselves. Returns the first such obstacle or `null`.
+ *
+ * Phase 2 scope: only invoked on the sync compile path (no ELK routedPath)
+ * for `routing:'straight'` segments — ELK already routes around nodes, and
+ * elbow/curved paths already bend. Handles the common regression where an
+ * LLM stacks three nodes on the same axis ("Web → Redis → DB" in the
+ * arch-cdn-03 eval) and emits a straight arrow that skips the middle node:
+ * the line and its bound label render on top of the bypassed node's text.
+ */
+function findBlockingLabelBox(
+  start: Point,
+  end: Point,
+  excludeIds: ReadonlySet<PrimitiveId>,
+  ctx: CompileContext,
+): ObstacleBBox | null {
+  for (const [id, record] of ctx.registry) {
+    if (excludeIds.has(id)) continue;
+    if (record.kind !== 'labelBox') continue;
+    if (segmentCrossesBBoxInterior(start, end, record.bbox)) return record.bbox;
+  }
+  return null;
+}
+
+/**
+ * Build an L-shaped detour around `obstacle` going via the single corner
+ * that lies on the far side of the obstacle relative to the straight line.
+ * The detour replaces a 2-point line with 3 points [start, corner, end];
+ * for axis-aligned inputs this generalises to 4 points [start, bend,
+ * bend, end] via the dedicated axis-aligned branch because pinning the
+ * corner on only one axis would rebuild the same vertical/horizontal
+ * crossing on the opposite edge.
+ *
+ * Strategy: try each of the 4 obstacle corners (inflated by a margin),
+ * filter to those whose two new sub-segments don't re-enter the obstacle,
+ * and pick the one with the shortest total length. Falls back to a 4-point
+ * axis-aligned bypass when no 3-point route clears the obstacle (this is
+ * the common case for a vertical or horizontal straight arrow that passed
+ * through the obstacle's full height/width).
+ */
+function detourAroundObstacle(
+  start: Point,
+  end: Point,
+  obstacle: ObstacleBBox,
+): Point[] {
+  const m = OBSTACLE_DETOUR_MARGIN;
+  const vertical = Math.abs(start[0] - end[0]) < 1e-6;
+  const horizontal = Math.abs(start[1] - end[1]) < 1e-6;
+  if (vertical || horizontal) {
+    // Axis-aligned inputs: a 3-point L can't help because the arrow's
+    // degenerate axis has to bend twice to clear both edges of the
+    // obstacle. Use the dedicated 4-point bypass that picks the side
+    // closer to the source endpoint.
+    if (vertical) {
+      const leftX = obstacle.x - m;
+      const rightX = obstacle.x + obstacle.w + m;
+      const detourX =
+        Math.abs(start[0] - leftX) < Math.abs(start[0] - rightX)
+          ? leftX
+          : rightX;
+      return [
+        [start[0], start[1]],
+        [detourX, start[1]],
+        [detourX, end[1]],
+        [end[0], end[1]],
+      ];
+    }
+    const topY = obstacle.y - m;
+    const botY = obstacle.y + obstacle.h + m;
+    const detourY =
+      Math.abs(start[1] - topY) < Math.abs(start[1] - botY) ? topY : botY;
+    return [
+      [start[0], start[1]],
+      [start[0], detourY],
+      [end[0], detourY],
+      [end[0], end[1]],
+    ];
+  }
+  const candidates: Point[] = [
+    [obstacle.x - m, obstacle.y - m],
+    [obstacle.x + obstacle.w + m, obstacle.y - m],
+    [obstacle.x - m, obstacle.y + obstacle.h + m],
+    [obstacle.x + obstacle.w + m, obstacle.y + obstacle.h + m],
+  ];
+  let best: { path: Point[]; length: number } | null = null;
+  for (const corner of candidates) {
+    if (segmentCrossesBBoxInterior(start, corner, obstacle)) continue;
+    if (segmentCrossesBBoxInterior(corner, end, obstacle)) continue;
+    const len =
+      Math.hypot(corner[0] - start[0], corner[1] - start[1]) +
+      Math.hypot(end[0] - corner[0], end[1] - corner[1]);
+    if (!best || len < best.length) {
+      best = {
+        path: [
+          [start[0], start[1]],
+          [corner[0], corner[1]],
+          [end[0], end[1]],
+        ],
+        length: len,
+      };
+    }
+  }
+  if (best) return best.path;
+  // Every corner is blocked (degenerate layout, e.g. endpoints flanking
+  // the obstacle on opposite sides). Fall back to a U-shape going over
+  // the top: this at least moves the polyline midpoint off the obstacle.
+  const topY = obstacle.y - m;
+  return [
+    [start[0], start[1]],
+    [start[0], topY],
+    [end[0], topY],
+    [end[0], end[1]],
+  ];
+}
+
 function buildRawPoints(
   start: Point,
   end: Point,
@@ -369,6 +540,21 @@ export function emitConnector(
     // above is exempted because ELK already spaces parallel edges itself.
     [start, end] = applyLaneOffset(rawStart, rawEnd, lane);
     rawPoints = buildRawPoints(start, end, routing, startDir);
+    // Sync-path obstacle detour. When an LLM stacks three nodes on the
+    // same axis (e.g. Web → Redis → DB in arch-cdn-03) and wires a
+    // straight Web→DB connector, the boundary-to-boundary line slices
+    // clean through the middle node's text. ELK would have routed around
+    // it, but the scene contains frames so buildGraphModel skipped ELK
+    // entirely. Detect the case here and insert a two-bend detour.
+    if (routing === 'straight' && p.routedPath === undefined) {
+      const excludeIds = new Set<PrimitiveId>();
+      if (typeof p.from === 'string') excludeIds.add(p.from);
+      if (typeof p.to === 'string') excludeIds.add(p.to);
+      const obstacle = findBlockingLabelBox(start, end, excludeIds, ctx);
+      if (obstacle) {
+        rawPoints = detourAroundObstacle(start, end, obstacle);
+      }
+    }
   }
   const { points, width, height } = normalizePoints(rawPoints);
 

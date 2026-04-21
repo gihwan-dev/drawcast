@@ -511,3 +511,185 @@ describe('emitConnector — boundary anchoring (B3)', () => {
     expect(arrow.endBinding).toBeNull();
   });
 });
+
+describe('emitConnector — straight-line obstacle detour (arch-cdn-03)', () => {
+  // Regression: arch-cdn-03 eval rendered a Web→DB "read" arrow as a single
+  // vertical straight line at x=250 from (250, 462.5) to (250, 652.5). A
+  // Redis Cache node sat between them at x=150-350, y=537.5-602.5, so the
+  // arrow — and its bound "read" label pinned to the polyline midpoint —
+  // rendered on top of the Redis node's text. The scene carried a Frame,
+  // so buildGraphModel returned null and ELK never had a chance to route
+  // the edge. The emit layer now detects the crossing and bends around.
+  it('vertical straight connector detours around a LabelBox sitting on the same axis', () => {
+    const web: LabelBox = {
+      kind: 'labelBox',
+      id: 'web' as PrimitiveId,
+      shape: 'rectangle',
+      at: [250, 430],
+      fit: 'fixed',
+      size: [200, 65],
+      text: 'Web',
+    };
+    const redis: LabelBox = {
+      kind: 'labelBox',
+      id: 'redis' as PrimitiveId,
+      shape: 'rectangle',
+      at: [250, 570],
+      fit: 'fixed',
+      size: [200, 65],
+      text: 'Redis',
+    };
+    const db: LabelBox = {
+      kind: 'labelBox',
+      id: 'db' as PrimitiveId,
+      shape: 'rectangle',
+      at: [250, 710],
+      fit: 'fixed',
+      size: [200, 115],
+      text: 'DB',
+    };
+    const c: Connector = {
+      kind: 'connector',
+      id: 'c' as PrimitiveId,
+      from: 'web' as PrimitiveId,
+      to: 'db' as PrimitiveId,
+      routing: 'straight',
+      label: 'read',
+    };
+    const result = compile(makeScene([web, redis, db, c]));
+    const arrow = findArrow(result.elements);
+    // Must bend: a 2-point straight line would cut through Redis.
+    expect(arrow.points.length).toBeGreaterThanOrEqual(4);
+    // None of the interior waypoints may sit inside Redis's bbox.
+    // Redis bbox: x=[150,350], y=[537.5, 602.5].
+    for (const [px, py] of arrow.points) {
+      const absX = arrow.x + px;
+      const absY = arrow.y + py;
+      const insideX = absX > 150 && absX < 350;
+      const insideY = absY > 537.5 && absY < 602.5;
+      expect(insideX && insideY).toBe(false);
+    }
+  });
+
+  it('does not detour when no obstacle sits on the straight line', () => {
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 100],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      at: [300, 100],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'B',
+    };
+    const c: Connector = {
+      kind: 'connector',
+      id: 'c' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: 'b' as PrimitiveId,
+      routing: 'straight',
+    };
+    const result = compile(makeScene([a, b, c]));
+    const arrow = findArrow(result.elements);
+    // Untouched by the detour: still a simple 2-point straight line.
+    expect(arrow.points.length).toBe(2);
+  });
+
+  it('diagonal straight connector detours around a LabelBox its line crosses', () => {
+    // Regression: arch-cdn-03 re-run rendered "read" edges as diagonal
+    // lines from a Web Server node down to a DB Replica node, passing
+    // through a Redis Cache node placed in between but offset sideways.
+    // The axis-aligned detour missed these; the Liang-Barsky check catches
+    // any crossing regardless of orientation.
+    const web: LabelBox = {
+      kind: 'labelBox',
+      id: 'web' as PrimitiveId,
+      shape: 'rectangle',
+      at: [150, 480],
+      fit: 'fixed',
+      size: [160, 55],
+      text: 'Web',
+    };
+    const redis: LabelBox = {
+      kind: 'labelBox',
+      id: 'redis' as PrimitiveId,
+      shape: 'rectangle',
+      at: [250, 620],
+      fit: 'fixed',
+      size: [180, 65],
+      text: 'Redis',
+    };
+    const db: LabelBox = {
+      kind: 'labelBox',
+      id: 'db' as PrimitiveId,
+      shape: 'rectangle',
+      at: [240, 780],
+      fit: 'fixed',
+      size: [180, 65],
+      text: 'DB',
+    };
+    const c: Connector = {
+      kind: 'connector',
+      id: 'c' as PrimitiveId,
+      from: 'web' as PrimitiveId,
+      to: 'db' as PrimitiveId,
+      routing: 'straight',
+      label: 'read',
+    };
+    const result = compile(makeScene([web, redis, db, c]));
+    const arrow = findArrow(result.elements);
+    // Must bend around Redis.
+    expect(arrow.points.length).toBeGreaterThanOrEqual(3);
+    // No waypoint may sit strictly inside Redis.
+    // Redis bbox: x=[160, 340], y=[587.5, 652.5].
+    for (const [px, py] of arrow.points) {
+      const absX = arrow.x + px;
+      const absY = arrow.y + py;
+      const insideX = absX > 160 && absX < 340;
+      const insideY = absY > 587.5 && absY < 652.5;
+      expect(insideX && insideY).toBe(false);
+    }
+  });
+
+  it('endpoint-adjacent LabelBoxes (targets of other edges) do not trigger a false detour', () => {
+    // "cache" edge Web → Redis must stay straight even though Redis's
+    // bbox touches the arrow's end point. `findBlockingLabelBox` excludes
+    // the endpoint-owning primitives from the obstacle search.
+    const web: LabelBox = {
+      kind: 'labelBox',
+      id: 'web' as PrimitiveId,
+      shape: 'rectangle',
+      at: [250, 430],
+      fit: 'fixed',
+      size: [200, 65],
+      text: 'Web',
+    };
+    const redis: LabelBox = {
+      kind: 'labelBox',
+      id: 'redis' as PrimitiveId,
+      shape: 'rectangle',
+      at: [250, 570],
+      fit: 'fixed',
+      size: [200, 65],
+      text: 'Redis',
+    };
+    const c: Connector = {
+      kind: 'connector',
+      id: 'c' as PrimitiveId,
+      from: 'web' as PrimitiveId,
+      to: 'redis' as PrimitiveId,
+      routing: 'straight',
+    };
+    const result = compile(makeScene([web, redis, c]));
+    const arrow = findArrow(result.elements);
+    expect(arrow.points.length).toBe(2);
+  });
+});
