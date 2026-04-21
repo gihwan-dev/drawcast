@@ -42,17 +42,26 @@ export async function compileAsync(
   return compile(enrichedScene);
 }
 
-/** True when the env var is explicitly opted-in. Accessed through
- *  `globalThis` so this module stays compilable without `@types/node`
- *  — the Tauri WebView imports this package as well and must not
- *  force a Node-typed global surface. Browser contexts have no
- *  `process` and therefore default the flag off, which is exactly
- *  the Phase 2 posture. */
+/** Resolve the layout flag with a Node-default-on, browser-default-off
+ *  posture. Accessed through `globalThis` so this module stays
+ *  compilable without `@types/node` — the Tauri WebView imports this
+ *  package too and must not force a Node-typed global surface.
+ *
+ *  - No `process` (e.g. Tauri WebView): always false. The UI layer
+ *    still renders via the sync `compile` path and never pulls in
+ *    the ELK binding.
+ *  - Node with no env var set: true. MCP server and evals opt in
+ *    by default now that Commit #7 flipped the gate.
+ *  - Node with `DRAWCAST_LAYOUT_ENGINE=off|0|false`: false. Explicit
+ *    escape hatch for debugging or rollback without a code change. */
 function isLayoutEnabledFromEnv(): boolean {
   const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
   if (proc?.env === undefined) {
     return false;
   }
   const value = proc.env.DRAWCAST_LAYOUT_ENGINE;
-  return value === 'on' || value === '1' || value === 'true';
+  if (value === 'off' || value === '0' || value === 'false') {
+    return false;
+  }
+  return true;
 }
