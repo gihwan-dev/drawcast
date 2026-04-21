@@ -156,4 +156,16 @@ describe('draw_upsert_edge', () => {
     expect(result.isError).toBe(true);
     expect(result.content).toHaveLength(1);
   });
+
+  it('converts a literal \\n inside the edge label into a real newline', async () => {
+    // Regression: mirrors the box/sticky sanitizer — edge labels take the
+    // same path so the same double-escape hazard applies.
+    const store = new SceneStore();
+    await drawUpsertEdge.execute(
+      { id: 'e', from: 'a', to: 'b', label: 'retry\\nif failed' },
+      store,
+    );
+    const stored = store.getPrimitive(asId('e')) as Connector;
+    expect(stored.label).toBe('retry\nif failed');
+  });
 });

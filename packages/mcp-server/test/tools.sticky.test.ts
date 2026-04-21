@@ -136,4 +136,17 @@ describe('draw_upsert_sticky', () => {
     expect(result.isError).toBe(true);
     expect(result.content).toHaveLength(1);
   });
+
+  it('converts a literal \\n inside sticky text into a real newline', async () => {
+    // Regression: the tool description advertises "\\n" as the multi-line
+    // separator, so clients that send the literal backslash-n must still
+    // render as an actual line break.
+    const store = new SceneStore();
+    await drawUpsertSticky.execute(
+      { id: 'legend', text: 'line1\\nline2', at: [0, 0] },
+      store,
+    );
+    const stored = store.getPrimitive(asId('legend')) as Sticky;
+    expect(stored.text).toBe('line1\nline2');
+  });
 });
