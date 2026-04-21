@@ -108,8 +108,8 @@ describe('emitLabelBox — container-bound text geometry (B1)', () => {
       shape: 'rectangle',
       at: [0, 0],
       fit: 'fixed',
-      size: [120, 80],
-      text: 'multi line label that probably wraps',
+      size: [150, 80],
+      text: 'multi line label that wraps nicely',
     };
     const result = compile(makeScene([p]));
     const shape = result.elements.find(
@@ -119,9 +119,10 @@ describe('emitLabelBox — container-bound text geometry (B1)', () => {
       (e): e is ExcalidrawTextElement => e.type === 'text',
     )!;
 
-    // Width stays pinned to the fit:'fixed' request; height can grow so
-    // the wrapped glyph run is contained (see emit/labelBox.ts comment).
-    expect(shape.width).toBe(120);
+    // Width stays pinned to the fit:'fixed' request when every token
+    // already fits inside the available (width - 2*padding) room; height
+    // can grow so the wrapped glyph run is contained.
+    expect(shape.width).toBe(150);
     expect(shape.height).toBeGreaterThanOrEqual(80);
     // Text fits inside.
     expect(text.width).toBeLessThanOrEqual(shape.width);
@@ -156,6 +157,32 @@ describe('emitLabelBox — container-bound text geometry (B1)', () => {
     expect(text.height).toBeLessThanOrEqual(shape.height);
     // The text bottom stays within the shape bottom.
     expect(text.y + text.height).toBeLessThanOrEqual(shape.y + shape.height + 1);
+  });
+
+  it('widens fixed-size box so non-CJK identifiers stay on one line', () => {
+    // Regression: state-tcp-02 eval rendered the "SYN_RECEIVED" state
+    // node as "SYN_RECEIV\nED" because Claude set fit:'fixed' size
+    // [160, 55] and `wrapText.hardBreak` chopped the 132px token mid-
+    // glyph. The emit layer must widen the container so the same
+    // widening buildGraphModel already applied survives through
+    // applyLayoutToScene without re-triggering the hard-break.
+    const p: LabelBox = {
+      kind: 'labelBox',
+      id: 'syn' as PrimitiveId,
+      shape: 'rectangle',
+      at: [0, 0],
+      fit: 'fixed',
+      size: [160, 55],
+      text: 'SYN_RECEIVED',
+    };
+    const result = compile(makeScene([p]));
+    const text = result.elements.find(
+      (e): e is ExcalidrawTextElement => e.type === 'text',
+    )!;
+    // Rendered text must stay on one line — the mid-glyph hard-break
+    // showed up as an embedded '\n' inside an otherwise single-word
+    // identifier.
+    expect(text.text).toBe('SYN_RECEIVED');
   });
 
   it('shape still registers the text in boundElements so Excalidraw pairs them', () => {

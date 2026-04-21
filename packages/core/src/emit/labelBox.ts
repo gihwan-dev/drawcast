@@ -21,7 +21,7 @@ import {
 import { pickHighContrastTextColor } from '../utils/contrast.js';
 import { newElementId } from '../utils/id.js';
 import { getLineHeight, measureText, type TextMetrics } from '../measure.js';
-import { wrapText } from '../wrap.js';
+import { measureLongestUnbreakableWord, wrapText } from '../wrap.js';
 import type {
   ExcalidrawDiamondElement,
   ExcalidrawEllipseElement,
@@ -103,6 +103,26 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
   let prewrappedText: string | undefined;
   let prewrappedMetrics: TextMetrics | undefined;
   if (p.text) {
+    // Widen the container only when a non-CJK token would exceed the
+    // available (post-padding) width and get hard-broken mid-glyph.
+    // Kept in sync with buildGraphModel so the ELK-reserved size and
+    // the emit-rendered size match. Callers that pass a narrow box
+    // intending whitespace wrapping (e.g. the "multi line label that
+    // probably wraps" fixture) keep their declared width; pathological
+    // single-token runs (500-char fixture, very long URL) are capped at
+    // 2× the declared width.
+    const longestToken = measureLongestUnbreakableWord({
+      text: p.text,
+      fontSize,
+      fontFamily,
+    });
+    const availableForText = Math.max(width - padding * 2, 1);
+    if (longestToken > availableForText) {
+      const minWidthForTokens = longestToken + padding * 2;
+      if (minWidthForTokens <= width * 2) {
+        width = minWidthForTokens;
+      }
+    }
     const maxTextWidth = Math.max(width - padding * 2, 1);
     prewrappedText = wrapText({
       text: p.text,
