@@ -65,7 +65,7 @@ export function buildGraphModel(
 
   for (const primitive of primitives) {
     if (primitive.kind === 'connector') {
-      const edge = connectorToEdge(primitive, nodeIds);
+      const edge = connectorToEdge(primitive, nodeIds, scene.theme);
       if (edge !== null) edges.push(edge);
     }
   }
@@ -164,6 +164,7 @@ function measureLabelBoxSize(
 function connectorToEdge(
   primitive: Extract<Primitive, { kind: 'connector' }>,
   knownNodeIds: ReadonlySet<string>,
+  theme: Theme,
 ): GraphEdge | null {
   // Only id-bound connectors participate. Raw Point endpoints are for
   // floating annotation arrows and must not influence layered layout.
@@ -175,10 +176,30 @@ function connectorToEdge(
   if (!knownNodeIds.has(primitive.from) || !knownNodeIds.has(primitive.to)) {
     return null;
   }
-  return {
+  const edge: GraphEdge = {
     id: primitive.id,
     source: primitive.from,
     target: primitive.to,
     routing: 'orthogonal',
   };
+  // Measure label so ELK's layered algorithm can reserve space for it.
+  // Without this the emitted text — which Excalidraw repositions to the
+  // arrow midpoint — ends up on top of nearby nodes in dense graphs
+  // (e.g. the retry-heavy CI flowchart where multiple "실패" labels
+  // cluster around a single "fix & re-push" target).
+  if (primitive.label !== undefined && primitive.label !== '') {
+    const fontSize = theme.defaultFontSize;
+    const fontFamily = theme.defaultFontFamily;
+    const metrics = measureText({
+      text: primitive.label,
+      fontSize,
+      fontFamily,
+    });
+    edge.label = {
+      text: primitive.label,
+      width: metrics.width,
+      height: metrics.height,
+    };
+  }
+  return edge;
 }
