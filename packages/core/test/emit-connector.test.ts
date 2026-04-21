@@ -364,6 +364,68 @@ describe('emitConnector — boundary anchoring (B3)', () => {
     expect(arrow.endBinding).toBeNull();
   });
 
+  it('parallel connectors (bidirectional pair) are offset perpendicular so labels do not collide', () => {
+    // Two vertically-stacked rectangles with bidirectional connectors — the
+    // regression we observed: both arrows ran on the same line and both
+    // labels landed at identical midpoints. After the lane-offset fix the
+    // two arrows must sit on distinct parallel lines.
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 100],
+      fit: 'fixed',
+      size: [200, 80],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 300],
+      fit: 'fixed',
+      size: [200, 80],
+      text: 'B',
+    };
+    const forward: Connector = {
+      kind: 'connector',
+      id: 'ab' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: 'b' as PrimitiveId,
+      label: 'req',
+      routing: 'straight',
+    };
+    const reverse: Connector = {
+      kind: 'connector',
+      id: 'ba' as PrimitiveId,
+      from: 'b' as PrimitiveId,
+      to: 'a' as PrimitiveId,
+      label: 'res',
+      routing: 'straight',
+    };
+    const result = compile(makeScene([a, b, forward, reverse]));
+    const arrows = result.elements.filter(
+      (el): el is ExcalidrawArrowElement => el.type === 'arrow',
+    );
+    expect(arrows).toHaveLength(2);
+    // The two arrows must have distinct x origins (perpendicular offset).
+    expect(arrows[0]!.x).not.toBe(arrows[1]!.x);
+
+    // Their label midpoints (== arrow midpoint since straight vertical) must
+    // also differ, otherwise both labels render on top of each other.
+    const labels = result.elements.filter(
+      (el) => el.type === 'text' && el.containerId !== undefined,
+    );
+    const arrowLabels = labels.filter(
+      (el) =>
+        'containerId' in el &&
+        arrows.some((a) => a.id === (el as { containerId?: string }).containerId),
+    );
+    expect(arrowLabels).toHaveLength(2);
+    const labelXs = arrowLabels.map((el) => el.x);
+    expect(labelXs[0]).not.toBe(labelXs[1]);
+  });
+
   it('raw Point endpoints are passed through unchanged (no boundary math)', () => {
     const c: Connector = {
       kind: 'connector',

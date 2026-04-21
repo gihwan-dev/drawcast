@@ -45,13 +45,15 @@ function widthOf(
 /**
  * Split a paragraph into atomic tokens. Tokens are either:
  *  - a whitespace run (preserved so trailing spaces are kept within a line),
- *  - a single CJK character (every CJK char is a break opportunity),
+ *  - a contiguous CJK run (treated as one word — whitespace is preferred as
+ *    a break point; hardBreak splits the run per-character only when the
+ *    whole run is wider than maxWidth),
  *  - a contiguous non-CJK, non-whitespace "word".
  */
 function tokenize(paragraph: string): string[] {
   const tokens: string[] = [];
   let buf = '';
-  let mode: 'word' | 'space' | null = null;
+  let mode: 'word' | 'space' | 'cjk' | null = null;
 
   const flush = (): void => {
     if (buf) {
@@ -62,9 +64,9 @@ function tokenize(paragraph: string): string[] {
 
   for (const ch of paragraph) {
     if (isCjk(ch)) {
-      flush();
-      tokens.push(ch);
-      mode = null;
+      if (mode !== 'cjk') flush();
+      buf += ch;
+      mode = 'cjk';
       continue;
     }
     if (/\s/.test(ch)) {
@@ -79,6 +81,10 @@ function tokenize(paragraph: string): string[] {
   }
   flush();
   return tokens;
+}
+
+function isWhitespaceToken(token: string): boolean {
+  return token.length > 0 && /^\s+$/.test(token);
 }
 
 /**
@@ -122,11 +128,16 @@ function wrapParagraph(
       line = tentative;
       continue;
     }
-    // Token doesn't fit; flush current line (unless it's a leading whitespace
-    // token which we keep) and try the token on its own.
+    // Token doesn't fit; flush current line and try the token on its own.
     if (line !== '') {
       lines.push(line);
       line = '';
+    }
+    // Drop a whitespace token that would lead a new line — trailing spaces
+    // from the flushed line already absorbed the word-boundary; a leading
+    // space on the next line just pushes glyphs off-center.
+    if (isWhitespaceToken(tok)) {
+      continue;
     }
     if (widthOf(tok, fontSize, fontFamily) <= maxWidth) {
       line = tok;
