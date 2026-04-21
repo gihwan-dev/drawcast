@@ -27,7 +27,12 @@ export interface LabelBox extends BaseProps {
   kind: 'labelBox';
   text?: string;
   shape: 'rectangle' | 'ellipse' | 'diamond';
-  at: Point;
+  /** Center-point scene coordinate. Optional since Phase 2: when
+   *  omitted, the layout engine places the box (provided
+   *  `DRAWCAST_LAYOUT_ENGINE` is on). If the engine is off and no `at`
+   *  is supplied, the emit layer falls back to the scene origin so
+   *  the primitive still compiles to a valid Excalidraw element. */
+  at?: Point;
   fit?: 'auto' | 'fixed';
   size?: readonly [width: number, height: number];
   rounded?: boolean;

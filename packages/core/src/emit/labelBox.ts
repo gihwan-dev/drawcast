@@ -107,11 +107,17 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
   }
 
   // -- Shape element -----------------------------------------------------------
+  // `at` is optional since Phase 2: when the primitive arrived without
+  // explicit coordinates the scene origin is a safe fallback — either
+  // the layout engine already rewrote `at` in compileAsync, or the
+  // caller is on the sync path and accepts origin placement as an
+  // explicit signal that they forgot.
+  const [atX, atY] = p.at ?? [0, 0];
   const shapeId = newElementId();
   const commonBase: BaseElementFields = baseElementFields({
     id: shapeId,
-    x: p.at[0] - width / 2,
-    y: p.at[1] - height / 2,
+    x: atX - width / 2,
+    y: atY - height / 2,
     width,
     height,
     angle: degreesToRadians(p.angle ?? 0),
@@ -215,8 +221,8 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
     elementIds: textId ? [shapeId, textId] : [shapeId],
     primaryId: shapeId,
     bbox: {
-      x: p.at[0] - width / 2,
-      y: p.at[1] - height / 2,
+      x: atX - width / 2,
+      y: atY - height / 2,
       w: width,
       h: height,
     },

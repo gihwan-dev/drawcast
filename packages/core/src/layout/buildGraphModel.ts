@@ -73,6 +73,18 @@ function labelBoxToNode(
     node.width = primitive.size[0];
     node.height = primitive.size[1];
   }
+  // An explicit `at` is the LLM's (or user's) positional intent — pass
+  // it to ELK as a fixed-position hint so the layer algorithm tries to
+  // respect it. `at` is centre-based; ELK expects top-left, so we need
+  // a size to translate and skip the hint otherwise. Layered treats
+  // `elk.position` as a soft hint today; Phase 3 will introduce the
+  // interactive/fixed algorithm for hard pinning.
+  if (primitive.at !== undefined && primitive.size !== undefined) {
+    node.fixedPosition = {
+      x: primitive.at[0] - primitive.size[0] / 2,
+      y: primitive.at[1] - primitive.size[1] / 2,
+    };
+  }
   return node;
 }
 

@@ -69,17 +69,17 @@ describe('draw_upsert_box', () => {
     expect(stored.shape).toBe('diamond');
   });
 
-  it('returns isError when required `at` is missing', async () => {
+  it('accepts an upsert without `at` and defers placement to the layout engine', async () => {
+    // Phase 2 contract: `at` is optional. The stored primitive reflects
+    // the caller's intent to leave placement open — no default coords
+    // are synthesised at MCP level. The core emit layer / compileAsync
+    // decide what to do from there.
     const store = new SceneStore();
-    const result = await drawUpsertBox.execute(
-      // Cast to bypass the compile-time check — this simulates an
-      // ill-formed request coming over the wire.
-      { id: 'a' } as never,
-      store,
-    );
-    expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toMatch(/at:/i);
-    expect(store.getAllPrimitives()).toHaveLength(0);
+    const result = await drawUpsertBox.execute({ id: 'a', text: 'A' }, store);
+    expect(result.isError).toBeUndefined();
+    expect(store.getAllPrimitives()).toHaveLength(1);
+    const stored = store.getPrimitive(asId('a')) as LabelBox;
+    expect(stored.at).toBeUndefined();
   });
 
   it('returns isError when fit="fixed" but size is omitted', async () => {

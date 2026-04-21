@@ -38,7 +38,10 @@ export const drawUpsertBoxInputSchema = z.object({
   id: z.string().min(1),
   text: z.string().optional(),
   shape: ShapeSchema.optional(),
-  at: PointSchema,
+  // `at` is optional since Phase 2: omit it and the layout engine picks
+  // a position. Kept compatible with prior callers that still pass
+  // explicit coordinates — those are treated as a positional hint.
+  at: PointSchema.optional(),
   style: StyleRefSchema.optional(),
   fit: FitSchema.optional(),
   size: SizeSchema.optional(),
@@ -56,7 +59,7 @@ export const drawUpsertBoxInputSchema = z.object({
 export type DrawUpsertBoxInput = z.infer<typeof drawUpsertBoxInputSchema>;
 
 const DESCRIPTION =
-  'Add or update a labeled box in the current scene. Use this for nodes in a diagram (process, decision, data, etc.). Same id re-applies as an update (upsert). Size auto-fits to text unless fit="fixed" with explicit size. Pass `returnPreview: true` to receive a PNG snapshot of the scene after the upsert for visual self-review.';
+  'Add or update a labeled box in the current scene. Use this for nodes in a diagram (process, decision, data, etc.). Same id re-applies as an update (upsert). Size auto-fits to text unless fit="fixed" with explicit size. Omit `at` to let the layout engine pick a position — only pass explicit coordinates when the user specifically asked to pin or place the box. Pass `returnPreview: true` to receive a PNG snapshot of the scene after the upsert for visual self-review.';
 
 export const drawUpsertBox = defineTool({
   name: 'draw_upsert_box',
@@ -74,7 +77,8 @@ export const drawUpsertBox = defineTool({
       },
       at: {
         ...POINT_JSON_SCHEMA,
-        description: 'Scene coordinate [x, y]',
+        description:
+          'Scene coordinate [x, y]. Optional — omit to let the layout engine place the box. Provide only when the user explicitly asked to pin a position.',
       },
       style: STYLE_REF_JSON_SCHEMA,
       fit: {
@@ -106,7 +110,7 @@ export const drawUpsertBox = defineTool({
       opacity: { type: 'number', description: '0–100' },
       returnPreview: RETURN_PREVIEW_JSON_SCHEMA,
     },
-    required: ['id', 'at'],
+    required: ['id'],
   },
   async execute(rawArgs, store, deps): Promise<ToolExecutionResult> {
     const parsed = drawUpsertBoxInputSchema.safeParse(rawArgs);
@@ -139,7 +143,7 @@ export const drawUpsertBox = defineTool({
       kind: 'labelBox',
       id: args.id as PrimitiveId,
       shape: args.shape ?? 'rectangle',
-      at: [args.at[0], args.at[1]],
+      ...(args.at !== undefined && { at: [args.at[0], args.at[1]] as const }),
       ...(args.text !== undefined && { text: sanitizeLabelText(args.text) }),
       ...(args.style !== undefined && { style: normalizeStyleRef(args.style) }),
       ...(args.fit !== undefined && { fit: args.fit }),
