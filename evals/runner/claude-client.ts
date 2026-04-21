@@ -159,7 +159,9 @@ function outputToString(value: unknown): string | undefined {
 export function buildClaudePrompt(questionPrompt: string): string {
   return `${questionPrompt}
 
-drawcast MCP 도구(mcp__drawcast__draw_upsert_box, mcp__drawcast__draw_upsert_edge 등)로 다이어그램을 완성한 뒤 응답을 종료해라. 완성된 씬은 평가 러너가 MCP에서 직접 수집하므로 draw_export를 따로 호출할 필요는 없다. 설명·요약·확인 메시지는 덧붙이지 말 것.`;
+drawcast MCP 도구(mcp__drawcast__draw_upsert_box, mcp__drawcast__draw_upsert_edge 등)로 다이어그램을 완성한 뒤 응답을 종료해라. 완성된 씬은 평가 러너가 MCP에서 직접 수집하므로 draw_export를 따로 호출할 필요는 없다. 설명·요약·확인 메시지는 덧붙이지 말 것.
+
+노드·엣지 라벨은 사용자 질문에 쓰인 언어와 어휘를 그대로 따른다. 질문이 한국어면 라벨도 한국어로 적고, 사용자가 명시한 용어(예: "로드밸런서", "캐시", "복제본")는 영어로 번역하지 말고 그대로 사용한다. 고유명사·약어(CDN, Redis, Kafka 등)는 원문 표기 유지.`;
 }
 
 function buildTrace(options: {
