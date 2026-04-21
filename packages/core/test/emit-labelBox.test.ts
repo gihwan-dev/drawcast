@@ -176,3 +176,68 @@ describe('emitLabelBox — container-bound text geometry (B1)', () => {
     expect(shape.boundElements).toContainEqual({ type: 'text', id: text.id });
   });
 });
+
+describe('emitLabelBox — text contrast fallback', () => {
+  // Regression: mind-react-01 eval surfaced Claude-authored nodes using a
+  // darker-shade stroke as the bound text color (e.g. bg=#2f9e44 with
+  // stroke=#2b8a3e). VLM rubrics flagged readability=2 with "텍스트 대비가
+  // 낮아" across the diagram's central branches. The emitter must drop
+  // the authored stroke whenever its contrast against the fill falls
+  // below WCAG 4.5:1 and fall back to #1e1e1e or #ffffff.
+  it('replaces low-contrast tinted stroke with the dark fallback on light fills', () => {
+    const p: LabelBox = {
+      kind: 'labelBox',
+      id: 'n1' as PrimitiveId,
+      shape: 'rectangle',
+      at: [0, 0],
+      text: 'low contrast',
+      style: {
+        backgroundColor: '#fef3c7',
+        strokeColor: '#fcd34d',
+      },
+    };
+    const result = compile(makeScene([p]));
+    const text = result.elements.find(
+      (e): e is ExcalidrawTextElement => e.type === 'text',
+    )!;
+    expect(text.strokeColor).toBe('#1e1e1e');
+  });
+
+  it('uses white text on saturated mid-dark fills where dark would still read low', () => {
+    const p: LabelBox = {
+      kind: 'labelBox',
+      id: 'n1' as PrimitiveId,
+      shape: 'rectangle',
+      at: [0, 0],
+      text: 'low contrast',
+      style: {
+        backgroundColor: '#2f9e44',
+        strokeColor: '#2b8a3e',
+      },
+    };
+    const result = compile(makeScene([p]));
+    const text = result.elements.find(
+      (e): e is ExcalidrawTextElement => e.type === 'text',
+    )!;
+    expect(text.strokeColor).toBe('#ffffff');
+  });
+
+  it('keeps the authored stroke when contrast already clears the threshold', () => {
+    const p: LabelBox = {
+      kind: 'labelBox',
+      id: 'n1' as PrimitiveId,
+      shape: 'rectangle',
+      at: [0, 0],
+      text: 'good contrast',
+      style: {
+        backgroundColor: '#ffffff',
+        strokeColor: '#1e1e1e',
+      },
+    };
+    const result = compile(makeScene([p]));
+    const text = result.elements.find(
+      (e): e is ExcalidrawTextElement => e.type === 'text',
+    )!;
+    expect(text.strokeColor).toBe('#1e1e1e');
+  });
+});
