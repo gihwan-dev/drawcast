@@ -5,7 +5,18 @@ import { chromium } from 'playwright';
 import type { ExcalidrawScene } from './types.js';
 
 const require = createRequire(import.meta.url);
-const MAX_RENDER_WIDTH = 1800;
+
+// Canvas safety cap. Beyond ~4096 we risk hitting browser texture limits
+// across GPUs; pick the next power-of-two under that. Any scene larger
+// than this still gets scaled down, but auto-layout output fits easily.
+const MAX_EXPORT_DIMENSION = 4096;
+
+// Lower bound on export scale. Below this, 16px text in Excalidraw lands
+// under ~8px in the PNG, which the Codex rubric reliably flags as a
+// readability failure regardless of the underlying structural quality.
+// Pin the floor so large scenes trade raw pixel count for legibility
+// instead of silently tanking the rubric.
+const MIN_FONT_SCALE = 0.5;
 
 function resolvePackageFile(pkgName: string, subPath: string): string {
   const pkgJson = require.resolve(`${pkgName}/package.json`);
@@ -32,7 +43,7 @@ export async function renderSceneToPng(
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({
-      viewport: { width: MAX_RENDER_WIDTH, height: 1400 },
+      viewport: { width: 1800, height: 1400 },
       deviceScaleFactor: 1,
     });
     await page.setContent('<!doctype html><html><body></body></html>');
@@ -40,7 +51,7 @@ export async function renderSceneToPng(
     await page.addScriptTag({ path: reactDomPath });
     await page.addScriptTag({ path: bundlePath });
     const result = await page.evaluate(
-      async ({ inputScene, maxWidth }): Promise<BrowserRenderResult> => {
+      async ({ inputScene, maxDim, minFontScale }): Promise<BrowserRenderResult> => {
         const browserWindow = window as unknown as {
           ExcalidrawLib?: {
             exportToBlob?: (options: Record<string, unknown>) => Promise<Blob>;
@@ -67,7 +78,16 @@ export async function renderSceneToPng(
           quality: 1,
           exportPadding: 48,
           getDimensions: (width: number, height: number) => {
-            const scale = width > maxWidth ? maxWidth / width : 1;
+            // Scale down only when a dimension exceeds the canvas cap.
+            // If the fit-scale would crush text below the floor, clamp
+            // to minFontScale even if the result slightly exceeds maxDim
+            // — readability wins over raw pixel count.
+            const naturalScale = Math.min(
+              maxDim / width,
+              maxDim / height,
+              1,
+            );
+            const scale = Math.max(minFontScale, naturalScale);
             return {
               width: Math.ceil(width * scale),
               height: Math.ceil(height * scale),
@@ -79,7 +99,11 @@ export async function renderSceneToPng(
           bytes: Array.from(new Uint8Array(await blob.arrayBuffer())),
         };
       },
-      { inputScene: scene, maxWidth: MAX_RENDER_WIDTH },
+      {
+        inputScene: scene,
+        maxDim: MAX_EXPORT_DIMENSION,
+        minFontScale: MIN_FONT_SCALE,
+      },
     );
     await fs.writeFile(outputPath, Buffer.from(result.bytes));
   } finally {

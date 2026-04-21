@@ -32,6 +32,16 @@ export interface SummaryJson {
   total_runs: number;
   scored_runs: number;
   pass_rate: number;
+  /**
+   * Rubric pass AND zero structural overlap. Intended as the regression
+   * gate for layout-engine work: rubric verdict alone conflates rendering
+   * scale artifacts with real structural quality, and overlap_pairs=0
+   * alone tolerates unreadable layouts. Taking both lets a layout change
+   * only claim a win when it improves both axes at once.
+   */
+  strict_pass_rate: number;
+  /** Scenes whose nodes do not overlap at all. */
+  overlap_free_rate: number;
   by_axis: Record<RubricAxis, AxisStats>;
   by_category: Record<string, SummaryBucket>;
   by_difficulty: Record<string, SummaryBucket>;
@@ -53,12 +63,22 @@ export async function writeSummary(options: {
     .filter((failure): failure is { id: string; sample: number; reason: string } =>
       failure !== undefined,
     );
+  const passCount = scored.filter(
+    (result) => result.score.rubric.verdict === 'pass',
+  ).length;
+  const overlapFreeCount = scored.filter((result) => isOverlapFree(result.score.metrics)).length;
+  const strictPassCount = scored.filter(
+    (result) =>
+      result.score.rubric.verdict === 'pass' && isOverlapFree(result.score.metrics),
+  ).length;
   const summary: SummaryJson = {
     run_id: options.runId,
     total_questions: options.questions.length,
     total_runs: options.results.length,
     scored_runs: scored.length,
-    pass_rate: rate(scored.filter((result) => result.score.rubric.verdict === 'pass').length, scored.length),
+    pass_rate: rate(passCount, scored.length),
+    strict_pass_rate: rate(strictPassCount, scored.length),
+    overlap_free_rate: rate(overlapFreeCount, scored.length),
     by_axis: axisStats(scored.map((result) => result.score.rubric)),
     by_category: bucketBy(scored, (result) => result.question.category),
     by_difficulty: bucketBy(scored, (result) => result.question.difficulty),
@@ -95,6 +115,12 @@ function hasRubricScore(
   result: SampleResult,
 ): result is SampleResult & { score: ScoreArtifact & { rubric: RubricResult } } {
   return result.score?.rubric !== undefined;
+}
+
+function isOverlapFree(metrics: ScoreArtifact['metrics']): boolean {
+  // Missing metrics are treated as "not verifiably overlap-free" so the
+  // strict gate stays conservative on legacy results without the axis.
+  return metrics !== undefined && metrics.overlap_pairs === 0;
 }
 
 function axisStats(scores: readonly RubricResult[]): Record<RubricAxis, AxisStats> {
@@ -181,6 +207,8 @@ function renderSummaryMarkdown(summary: SummaryJson): string {
 - total_runs: ${summary.total_runs}
 - scored_runs: ${summary.scored_runs}
 - pass_rate: ${summary.pass_rate}
+- strict_pass_rate: ${summary.strict_pass_rate}
+- overlap_free_rate: ${summary.overlap_free_rate}
 - latency_p50_ms: ${summary.latency_p50_ms ?? 'n/a'}
 - latency_p95_ms: ${summary.latency_p95_ms ?? 'n/a'}
 

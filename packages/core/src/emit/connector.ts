@@ -95,6 +95,49 @@ function boundaryPoint(record: PrimitiveRecord, ctx: CompileContext, towards: Po
   return rotatePoint([center[0] + dx * t, center[1] + dy * t], center, element.angle);
 }
 
+type PortDir = 'N' | 'E' | 'S' | 'W';
+
+// Major-axis heuristic: connector leaves the side that points most directly
+// at the other node's centre. Ties (|dx| == |dy|) fall to horizontal so the
+// layout stays stable for grid-aligned pairs.
+function selectPortDirs(
+  fromCenter: Point,
+  toCenter: Point,
+): { fromDir: PortDir; toDir: PortDir } {
+  const dx = toCenter[0] - fromCenter[0];
+  const dy = toCenter[1] - fromCenter[1];
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? { fromDir: 'E', toDir: 'W' } : { fromDir: 'W', toDir: 'E' };
+  }
+  return dy >= 0 ? { fromDir: 'S', toDir: 'N' } : { fromDir: 'N', toDir: 'S' };
+}
+
+// Anchor point at the centre of a cardinal side, rotation-aware. Diamond
+// and ellipse land on the corresponding vertex / axis end, which reads
+// cleanly as a connector anchor.
+function portPoint(record: PrimitiveRecord, ctx: CompileContext, dir: PortDir): Point {
+  const element = ctx.getElementById(record.primaryId)!;
+  const center = centerOfRecord(record);
+  const halfW = record.bbox.w / 2;
+  const halfH = record.bbox.h / 2;
+  let local: Point;
+  switch (dir) {
+    case 'E':
+      local = [center[0] + halfW, center[1]];
+      break;
+    case 'W':
+      local = [center[0] - halfW, center[1]];
+      break;
+    case 'S':
+      local = [center[0], center[1] + halfH];
+      break;
+    case 'N':
+      local = [center[0], center[1] - halfH];
+      break;
+  }
+  return rotatePoint(local, center, element.angle);
+}
+
 interface ResolvedEndpointCenter {
   center: Point;
   /** Non-null only when the endpoint references a bindable primitive. */
@@ -162,13 +205,39 @@ function buildRawPoints(
   start: Point,
   end: Point,
   routing: 'straight' | 'elbow' | 'curved',
+  startDir?: PortDir,
 ): Point[] {
   if (routing === 'elbow') {
-    const midX = (start[0] + end[0]) / 2;
+    // Horizontal-first when the connector leaves an E/W port so the first
+    // segment extends outward from the side; vertical-first for N/S ports.
+    // Without a hint (point endpoints) pick the longer axis: this matches
+    // the old behaviour for wide pairs and fixes the thin-tall case where
+    // the forced (midX, startY) kink used to overshoot the source node.
+    const horizontalFirst = startDir
+      ? startDir === 'E' || startDir === 'W'
+      : Math.abs(end[0] - start[0]) >= Math.abs(end[1] - start[1]);
+    if (horizontalFirst) {
+      // Axis-aligned: degenerate to a straight 2-point line so Excalidraw
+      // doesn't render a visible kink on top of coincident points.
+      if (Math.abs(start[1] - end[1]) < 1e-6) {
+        return [[start[0], start[1]], [end[0], end[1]]];
+      }
+      const midX = (start[0] + end[0]) / 2;
+      return [
+        [start[0], start[1]],
+        [midX, start[1]],
+        [midX, end[1]],
+        [end[0], end[1]],
+      ];
+    }
+    if (Math.abs(start[0] - end[0]) < 1e-6) {
+      return [[start[0], start[1]], [end[0], end[1]]];
+    }
+    const midY = (start[1] + end[1]) / 2;
     return [
       [start[0], start[1]],
-      [midX, start[1]],
-      [midX, end[1]],
+      [start[0], midY],
+      [end[0], midY],
       [end[0], end[1]],
     ];
   }
@@ -231,12 +300,47 @@ export function emitConnector(
 
   // 1) Endpoints -> scene-coordinate points. Bound references are anchored to
   //    the boundary now because Excalidraw 0.17.x renders exactly these points.
+  //    Elbow routing snaps to cardinal ports (side midpoints) so the first
+  //    kink extends out of a side rather than a corner. Straight/curved keep
+  //    the centre-to-centre boundary hit for visual balance on diagonals.
+  //
+  //    When the primitive carries a `routedPath` we skip all of that: it
+  //    means an external layout engine (ELK) already produced a waypoint
+  //    sequence that avoids node bodies. Using the built-in elbow math on
+  //    top would re-introduce the node-crossing regression the router
+  //    was picked to prevent.
   const fromRes = resolveCenter(p.from, ctx, p.id, 'from');
   const toRes = resolveCenter(p.to, ctx, p.id, 'to');
-  const rawStart = fromRes.record ? boundaryPoint(fromRes.record, ctx, toRes.center) : fromRes.center;
-  const rawEnd = toRes.record ? boundaryPoint(toRes.record, ctx, fromRes.center) : toRes.center;
-  const [start, end] = applyLaneOffset(rawStart, rawEnd, lane);
-  const rawPoints = buildRawPoints(start, end, routing);
+  let start: Point;
+  let end: Point;
+  let rawPoints: Point[];
+  if (p.routedPath !== undefined && p.routedPath.length >= 2) {
+    // External layout engine (ELK) already routed this edge around node
+    // bodies — lane offset and port snapping would only distort its work.
+    const first = p.routedPath[0]!;
+    const last = p.routedPath[p.routedPath.length - 1]!;
+    start = [first[0], first[1]];
+    end = [last[0], last[1]];
+    rawPoints = p.routedPath.map((pt) => [pt[0], pt[1]] as Point);
+  } else {
+    let startDir: PortDir | undefined;
+    let rawStart: Point;
+    let rawEnd: Point;
+    if (routing === 'elbow' && fromRes.record && toRes.record) {
+      const dirs = selectPortDirs(fromRes.center, toRes.center);
+      rawStart = portPoint(fromRes.record, ctx, dirs.fromDir);
+      rawEnd = portPoint(toRes.record, ctx, dirs.toDir);
+      startDir = dirs.fromDir;
+    } else {
+      rawStart = fromRes.record ? boundaryPoint(fromRes.record, ctx, toRes.center) : fromRes.center;
+      rawEnd = toRes.record ? boundaryPoint(toRes.record, ctx, fromRes.center) : toRes.center;
+    }
+    // Parallel-lane offset applies to the built-in router path (main #33)
+    // so bidirectional / parallel edges keep separated tracks. ELK output
+    // above is exempted because ELK already spaces parallel edges itself.
+    [start, end] = applyLaneOffset(rawStart, rawEnd, lane);
+    rawPoints = buildRawPoints(start, end, routing, startDir);
+  }
   const { points, width, height } = normalizePoints(rawPoints);
 
   // 2) Bindings

@@ -27,7 +27,12 @@ export interface LabelBox extends BaseProps {
   kind: 'labelBox';
   text?: string;
   shape: 'rectangle' | 'ellipse' | 'diamond';
-  at: Point;
+  /** Center-point scene coordinate. Optional since Phase 2: when
+   *  omitted, the layout engine places the box (provided
+   *  `DRAWCAST_LAYOUT_ENGINE` is on). If the engine is off and no `at`
+   *  is supplied, the emit layer falls back to the scene origin so
+   *  the primitive still compiles to a valid Excalidraw element. */
+  at?: Point;
   fit?: 'auto' | 'fixed';
   size?: readonly [width: number, height: number];
   rounded?: boolean;
@@ -47,6 +52,13 @@ export interface Connector extends BaseProps {
     start?: Arrowhead | null;
     end?: Arrowhead | null;
   };
+  /** Pre-computed routed waypoints from an external layout engine
+   *  (ELK in Phase 2). When present — at least two points — the emit
+   *  layer uses these scene coordinates verbatim and skips port
+   *  selection, boundary math, and the built-in elbow kink logic.
+   *  Populated by `applyLayoutToScene`; LLM callers should leave it
+   *  unset and let the layout pipeline own edge geometry. */
+  routedPath?: readonly Point[];
 }
 
 export interface Sticky extends BaseProps {

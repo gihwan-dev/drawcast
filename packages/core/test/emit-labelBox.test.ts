@@ -31,6 +31,31 @@ function makeScene(primitives: LabelBox[]): Scene {
   };
 }
 
+describe('emitLabelBox — optional `at` (Phase 2 hybrid contract)', () => {
+  it('renders at scene origin when `at` is omitted and the sync compile is used', () => {
+    // Sync compile path with no layout engine: missing `at` must not
+    // crash and must not emit NaN coordinates. Origin fallback is the
+    // explicit signal the caller skipped the layout pass.
+    const box: LabelBox = {
+      kind: 'labelBox',
+      id: 'orphan' as PrimitiveId,
+      shape: 'rectangle',
+      text: 'hi',
+    };
+    const result = compile(makeScene([box]));
+    const rect = result.elements.find(
+      (el): el is ExcalidrawRectangleElement => el.type === 'rectangle',
+    );
+    expect(rect).toBeDefined();
+    expect(Number.isFinite(rect!.x)).toBe(true);
+    expect(Number.isFinite(rect!.y)).toBe(true);
+    // Shape centre sits on (0, 0) so the rectangle itself lives at
+    // half-size offsets from the origin.
+    expect(rect!.x + rect!.width / 2).toBe(0);
+    expect(rect!.y + rect!.height / 2).toBe(0);
+  });
+});
+
 describe('emitLabelBox — container-bound text geometry (B1)', () => {
   it('text element sits inside the container bbox with baseline set', () => {
     const p: LabelBox = {

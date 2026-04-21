@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import {
-  compile,
+  compileAsync,
   serializeAsClipboardJSON,
   serializeAsExcalidrawFile,
   serializeAsObsidianMarkdown,
@@ -91,7 +91,9 @@ export const drawExport = defineTool({
     }
 
     const scene: Scene = sceneSnapshot;
-    const result = compile(scene);
+    // Phase 2: MCP export runs the auto-layout pipeline by default.
+    // Callers can force the legacy sync path via `DRAWCAST_LAYOUT_ENGINE=off`.
+    const result = await compileAsync(scene);
 
     // Warning summary — prepend a single line when we have any so the model
     // can surface them without inflating the output.

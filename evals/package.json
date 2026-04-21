@@ -9,6 +9,7 @@
     "lint": "eslint runner --ext .ts"
   },
   "dependencies": {
+    "@drawcast/core": "workspace:*",
     "@excalidraw/excalidraw": "0.17.6",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "commander": "^12.1.0",

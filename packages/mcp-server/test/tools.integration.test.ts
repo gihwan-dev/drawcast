@@ -79,9 +79,12 @@ describe('core tools registration', () => {
 
   it('tools/call surfaces zod validation failures as isError', async () => {
     const { client } = await connectPair();
+    // `at` is optional since Phase 2 so "id only" is a valid payload.
+    // Use opacity > 100 which zod rejects to trigger the validation
+    // failure path.
     const result = await client.callTool({
       name: 'draw_upsert_box',
-      arguments: { id: 'bad' },
+      arguments: { id: 'bad', opacity: 200 },
     });
     expect(result.isError).toBe(true);
     await client.close();
