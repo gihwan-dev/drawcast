@@ -36,6 +36,7 @@ export function calculateMetrics(
       labels,
     ),
     overlap_pairs: countOverlaps(nodeElements),
+    edge_label_overlaps: countEdgeLabelOverlaps(elements, nodeElements),
   };
 
   if (question.expected.must_have_branch === true) {
@@ -89,6 +90,45 @@ function calculateConceptCoverage(
 
 function normalizeText(value: string): string {
   return value.toLocaleLowerCase().replace(/\s+/g, '');
+}
+
+function countEdgeLabelOverlaps(
+  allElements: readonly ExcalidrawElement[],
+  nodeElements: readonly ExcalidrawElement[],
+): number {
+  const shapeNodes = nodeElements.filter(
+    (element) => element.type !== 'text',
+  );
+  const arrowsById = new Map(
+    allElements.filter((el) => el.type === 'arrow').map((el) => [el.id, el]),
+  );
+  const edgeLabels = allElements.filter(
+    (el) =>
+      el.type === 'text' &&
+      typeof el.containerId === 'string' &&
+      arrowsById.has(el.containerId),
+  );
+  const nodeBoxesById = new Map(
+    shapeNodes.map((node) => [node.id, toBox(node)]),
+  );
+  let count = 0;
+  for (const label of edgeLabels) {
+    const lbox = toBox(label);
+    const arrow = arrowsById.get(label.containerId as string);
+    const endpointIds = new Set<string>();
+    const startId = arrow?.startBinding?.elementId;
+    const endId = arrow?.endBinding?.elementId;
+    if (typeof startId === 'string') endpointIds.add(startId);
+    if (typeof endId === 'string') endpointIds.add(endId);
+    // Endpoints are excluded — diamond/ellipse bboxes contain empty
+    // corners the label legitimately sits in, and labels flush against
+    // their own source/target are expected anchoring behaviour.
+    const hits = Array.from(nodeBoxesById).some(
+      ([id, nbox]) => !endpointIds.has(id) && intersects(lbox, nbox),
+    );
+    if (hits) count += 1;
+  }
+  return count;
 }
 
 function countOverlaps(elements: readonly ExcalidrawElement[]): number {
