@@ -218,6 +218,68 @@ describe('ElkLayoutEngine', () => {
     }
   });
 
+  it('wraps long linear chains into columns so flowcharts do not end up ~4x taller than wide', async () => {
+    // Regression guard for the flow-ci-04 rubric finding that a 10-stage
+    // CI/CD flow rendered at aspect ratio ~0.40 (width/height), forcing
+    // reviewers to scroll. `elk.aspectRatio=0.8 + wrapping.strategy=
+    // SINGLE_EDGE` wraps chains of ≥5 nodes into two columns while leaving
+    // short or already-branching graphs alone (the other tests above
+    // continue to pass without wrapping).
+    const engine = new ElkLayoutEngine();
+    const children = Array.from({ length: 10 }, (_, i) => ({
+      id: `n${i}`,
+      primitiveIds: [`n${i}`],
+      width: 160,
+      height: 60,
+    }));
+    const edges = Array.from({ length: 9 }, (_, i) => ({
+      id: `e${i}`,
+      source: `n${i}`,
+      target: `n${i + 1}`,
+    }));
+    const graph: GraphModel = {
+      id: 'scene',
+      diagramType: 'flowchart',
+      children,
+      edges,
+    };
+    const result = await engine.layout(graph);
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const node of result.children) {
+      minX = Math.min(minX, node.x);
+      maxX = Math.max(maxX, node.x + node.width);
+      minY = Math.min(minY, node.y);
+      maxY = Math.max(maxY, node.y + node.height);
+    }
+    const width = maxX - minX;
+    const height = maxY - minY;
+    // Without wrapping, a 10-node chain with 60px-tall boxes + 60px
+    // spacing would be ~1140px tall and only 160px wide (ratio ~0.14).
+    // After wrapping into two columns it should be no taller than it is
+    // without wrapping, and at least ~2x wider.
+    expect(height).toBeLessThan(700);
+    expect(width).toBeGreaterThan(300);
+    // More than one distinct x-bucket proves the chain is no longer a
+    // single vertical column.
+    const distinctXs = new Set(result.children.map((n) => Math.round(n.x)));
+    expect(distinctXs.size).toBeGreaterThan(1);
+  });
+
+  it('leaves short chains in a single column (does not wrap prematurely)', async () => {
+    // Safety net for the wrapping config: the 3-node lineGraph fixture
+    // represents the typical 3-tier architecture case (arch-3tier-01).
+    // SINGLE_EDGE wrapping with aspectRatio=0.8 must NOT turn it into a
+    // horizontal L-shape — users and the rubric expect a simple vertical
+    // flow here.
+    const engine = new ElkLayoutEngine();
+    const result = await engine.layout(lineGraph());
+    const distinctXs = new Set(result.children.map((n) => Math.round(n.x)));
+    expect(distinctXs.size).toBe(1);
+  });
+
   it('accepts fixedPosition input without failing layout', async () => {
     // Layered algorithm recomputes positions globally and only treats
     // `elk.position` as a soft hint, so we don't yet guarantee the

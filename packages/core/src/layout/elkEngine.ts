@@ -102,6 +102,18 @@ const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   // architecture diagrams compact.
   'elk.spacing.edgeEdge': '120',
   'elk.layered.spacing.edgeEdgeBetweenLayers': '40',
+  // Long mostly-linear flows (CI/CD pipelines, multi-step checklists, etc.)
+  // produced diagrams that were ~4x taller than wide, forcing rubric
+  // reviewers to scroll and burying context ("실패 경로 점선이 좌우로 크게
+  // 우회" in flow-ci-04 baseline). SINGLE_EDGE wrapping only kicks in when
+  // the natural layered result is taller than the target aspect ratio, so
+  // it leaves compact / branching graphs alone (verified on the 3-node
+  // arch-3tier-01 case and the 7-node retry flow) while wrapping chains
+  // of ≥5 nodes into two columns. Target 0.8 is intentionally below ELK's
+  // default 1.6 because flowcharts read fine portrait — we only want to
+  // cap the extreme tall-and-narrow case.
+  'elk.aspectRatio': '0.8',
+  'elk.layered.wrapping.strategy': 'SINGLE_EDGE',
   'elk.randomSeed': '1',
 };
 
