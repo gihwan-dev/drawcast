@@ -92,6 +92,16 @@ const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   // other labels when many feedback edges converge on one target.
   'elk.layered.spacing.edgeLabelSpacing': '12',
   'elk.spacing.edgeLabel': '8',
+  // Parallel arrows between the same node pair (e.g. request/response in
+  // arch-3tier-01) end up only ~30px apart on each side of the boundary
+  // with ELK's default port distribution. Bound text labels are pinned
+  // to the arrow midpoint by Excalidraw, so when the perpendicular gap
+  // is narrower than the label width the two label runs overlap
+  // ("HTTP 응답HTTP 요청"). Bumping `spacing.edgeEdge` widens the lane
+  // so labels stop crashing into one another while still keeping
+  // architecture diagrams compact.
+  'elk.spacing.edgeEdge': '120',
+  'elk.layered.spacing.edgeEdgeBetweenLayers': '40',
   'elk.randomSeed': '1',
 };
 
