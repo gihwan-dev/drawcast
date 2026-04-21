@@ -188,6 +188,7 @@ function hydrateNode(
   // unlaid `GraphNode[]`, which `exactOptionalPropertyTypes` refuses
   // to widen into `LaidOutNode[]` even though the overwrite below
   // would replace the value entirely.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { children: _unlaidChildren, ...rest } = original;
   const laidOut: LaidOutNode = {
     ...rest,
