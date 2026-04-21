@@ -426,6 +426,72 @@ describe('emitConnector — boundary anchoring (B3)', () => {
     expect(labelXs[0]).not.toBe(labelXs[1]);
   });
 
+  it('routedPath label anchors on the middle segment, not the endpoint midpoint', () => {
+    // Regression for "재시도" / feedback-edge labels floating off-path. A
+    // 6-point ELK-routed feedback edge has endpoints far apart horizontally
+    // (~200px) but the actual drawn path runs as a narrow L along x≈9.
+    // The straight-line midpoint would land at x≈99 in open space; the
+    // real edge has no ink there and readers can't tell which arrow the
+    // label belongs to. Anchoring on the middle segment (matching
+    // Excalidraw 0.17.x's own bound-text logic) keeps the label on the
+    // segment that carries the edge.
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 100],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      at: [0, 400],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'B',
+    };
+    const c: Connector = {
+      kind: 'connector',
+      id: 'c' as PrimitiveId,
+      from: 'b' as PrimitiveId,
+      to: 'a' as PrimitiveId,
+      label: '재시도',
+      routing: 'elbow',
+      routedPath: [
+        [84, 526],
+        [84, 476],
+        [93, 476],
+        [93, 239],
+        [281.83, 239],
+        [281.83, 229],
+      ],
+    };
+    const result = compile(makeScene([a, b, c]));
+    const label = result.elements.find(
+      (el): el is {
+        type: 'text';
+        text: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      } => el.type === 'text' && (el as { text?: string }).text === '재시도',
+    );
+    if (label === undefined) {
+      throw new Error('expected label element');
+    }
+    const centerX = label.x + label.width / 2;
+    const centerY = label.y + label.height / 2;
+    // Middle segment of the 6-point path is points[2]→points[3] = (93,476)→(93,239).
+    // Midpoint = (93, 357.5). The straight-line midpoint between waypoints[0]
+    // and waypoints[5] would be (182.9, 377.5) — off in open space.
+    expect(centerX).toBe(93);
+    expect(centerY).toBeCloseTo(357.5, 5);
+  });
+
   it('raw Point endpoints are passed through unchanged (no boundary math)', () => {
     const c: Connector = {
       kind: 'connector',
