@@ -18,6 +18,7 @@ import {
   baseElementFields,
   type BaseElementFields,
 } from '../utils/baseElementFields.js';
+import { pickHighContrastTextColor } from '../utils/contrast.js';
 import { newElementId } from '../utils/id.js';
 import { getLineHeight, measureText, type TextMetrics } from '../measure.js';
 import { wrapText } from '../wrap.js';
@@ -207,6 +208,15 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
     const textY = commonBase.y + (height - textHeight) / 2;
 
     textId = newElementId();
+    // The authored stroke often matches the fill's darker shade (e.g.
+    // stroke=#2b8a3e on bg=#2f9e44 from Claude's own presets), which
+    // renders the bound text barely distinguishable from the shape fill.
+    // Drop to a high-contrast fallback whenever the authored pairing
+    // falls under WCAG 4.5:1.
+    const labelColor = pickHighContrastTextColor(
+      style.backgroundColor,
+      style.strokeColor,
+    );
     const textBase = baseElementFields({
       id: textId,
       x: textX,
@@ -214,7 +224,7 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
       width: textWidth,
       height: textHeight,
       angle: 0 as Radians,
-      strokeColor: style.strokeColor,
+      strokeColor: labelColor,
       backgroundColor: 'transparent',
       fillStyle: style.fillStyle,
       strokeWidth: style.strokeWidth,
