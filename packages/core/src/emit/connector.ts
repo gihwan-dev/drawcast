@@ -56,6 +56,31 @@ function centerOfRecord(record: PrimitiveRecord): Point {
   return [record.bbox.x + record.bbox.w / 2, record.bbox.y + record.bbox.h / 2];
 }
 
+/**
+ * Pick a label anchor on the edge polyline that matches Excalidraw 0.17.x's
+ * own `getBoundTextElementPosition` logic: odd-count → the middle waypoint,
+ * even-count → the midpoint of the middle segment. For 2-point (straight)
+ * routes this collapses to the straight-line midpoint, so existing call
+ * sites behave identically. Routed polylines (elbow, ELK `routedPath`)
+ * land the label on the segment that actually carries the drawn edge
+ * instead of floating at the diagonal midpoint between shapes.
+ */
+function computeLabelAnchor(points: readonly Point[]): Point {
+  if (points.length === 0) return [0, 0];
+  if (points.length === 1) {
+    const only = points[0]!;
+    return [only[0], only[1]];
+  }
+  if (points.length % 2 === 1) {
+    const mid = points[Math.floor(points.length / 2)]!;
+    return [mid[0], mid[1]];
+  }
+  const i = points.length / 2 - 1;
+  const a = points[i]!;
+  const b = points[i + 1]!;
+  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+}
+
 function isPoint(ref: PrimitiveId | Point): ref is Point {
   return typeof ref !== 'string';
 }
@@ -398,13 +423,23 @@ export function emitConnector(
     const fontSize = style.fontSize ?? ctx.theme.defaultFontSize;
     const lineHeight = getLineHeight(fontFamily);
     const metrics = measureText({ text: p.label, fontSize, fontFamily });
-    // Midpoint of the (shifted) endpoints. For parallel connectors we also
-    // slide the label along the pair's *canonical* axis so opposite-direction
-    // labels don't land at identical coordinates (midpoint ± offset along
-    // each arrow's own direction cancels out — the two arrows share a
-    // midpoint). Using the canonical axis breaks that symmetry.
-    const mx = (start[0] + end[0]) / 2;
-    const my = (start[1] + end[1]) / 2;
+    // Anchor on the polyline, not the straight line between endpoints.
+    // For orthogonally routed feedback edges (ELK `routedPath`, or the
+    // built-in elbow router) the straight-line midpoint can fall far off
+    // the visible edge path — e.g. the "재시도" label in flow-login-01
+    // was floating in open space between shapes. Matching Excalidraw
+    // 0.17.x's own `getBoundTextElementPosition` (odd points → middle
+    // point; even points → middle-segment midpoint) keeps the emit-time
+    // position consistent with how the editor repositions the label on
+    // interaction, and lands labels on the segment that actually carries
+    // the edge.
+    //
+    // For parallel connectors we additionally slide the label along the
+    // pair's *canonical* axis so opposite-direction labels don't land at
+    // identical coordinates (midpoint ± offset along each arrow's own
+    // direction cancels out — the two arrows share a midpoint). Using
+    // the canonical axis breaks that symmetry.
+    const [mx, my] = computeLabelAnchor(rawPoints);
     const dxFull = end[0] - start[0];
     const dyFull = end[1] - start[1];
     const lenFull = Math.hypot(dxFull, dyFull);
