@@ -63,7 +63,18 @@ const ALGORITHM_BY_TYPE: Record<DiagramType, string> = {
  *  happily demotes the source to a middle/bottom layer — which rubric
  *  reviewers consistently flagged as an unnatural flow. This strategy
  *  does not depend on Claude's node-definition order, so it's stable
- *  across the non-deterministic AI output. */
+ *  across the non-deterministic AI output.
+ *
+ *  `cycleBreaking.strategy=INTERACTIVE` uses the y coordinate supplied
+ *  via `fixedPosition` (set by `buildGraphModel` from the LLM's `at`
+ *  hint) to decide which edges are "back edges". The default `GREEDY`
+ *  picks the minimum feedback arc set, which can reverse the wrong
+ *  edge in multi-retry flowcharts: e.g. in a login flow with both an
+ *  "invalid input → input" and a "failed auth → input" retry, greedy
+ *  reverses the single forward edge `input → validate` because it
+ *  breaks both cycles at once — promoting `validate` to a source and
+ *  burying `input` at the bottom. Using the y hint to detect back
+ *  edges keeps the semantically-forward edge pointing downward. */
 const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   'elk.algorithm': 'layered',
   'elk.direction': 'DOWN',
@@ -72,6 +83,7 @@ const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   'elk.edgeRouting': 'ORTHOGONAL',
   'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
   'elk.layered.layering.strategy': 'LONGEST_PATH_SOURCE',
+  'elk.layered.cycleBreaking.strategy': 'INTERACTIVE',
   'elk.randomSeed': '1',
 };
 
