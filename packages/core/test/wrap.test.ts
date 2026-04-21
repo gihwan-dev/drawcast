@@ -68,6 +68,26 @@ describe('wrapText', () => {
     expect(wrapped).toBe('first\nsecond');
   });
 
+  it('prefers whitespace boundaries over mid-CJK-word breaks', () => {
+    // Box width 220 → inner width 180. The full line
+    // "이메일 / 비밀번호 입력" doesn't fit (≈242px), but
+    // "이메일 / 비밀번호" alone (≈176px) does. The wrapper must break at
+    // the whitespace before "입력", NOT inside "비밀번호".
+    const wrapped = wrapText({
+      text: '이메일 / 비밀번호 입력',
+      maxWidth: 180,
+      fontSize: 20,
+      fontFamily: 5,
+    });
+    const lines = wrapped.split('\n');
+    expect(lines.length).toBe(2);
+    for (const line of lines) {
+      expect(line.includes('비밀번호') || !line.includes('비밀번')).toBe(true);
+      expect(line.includes('비밀번호') || !line.includes('번호')).toBe(true);
+    }
+    expect(lines[1]?.startsWith(' ')).toBe(false);
+  });
+
   it('keeps an empty paragraph as an empty line', () => {
     const wrapped = wrapText({
       text: 'a\n\nb',
