@@ -59,3 +59,27 @@ export {
   type ComplianceReport,
   type ComplianceCode,
 } from './testing/compliance.js';
+
+// Layout engine (Phase 2, Node-only). Gated behind DRAWCAST_LAYOUT_ENGINE.
+export {
+  compileAsync,
+  type CompileAsyncOptions,
+  ElkLayoutEngine,
+  type ElkLayoutEngineOptions,
+  buildGraphModel,
+  type BuildGraphModelOptions,
+  applyLayoutToScene,
+  type DiagramType,
+  type EdgeProtocol,
+  type EdgeRouting,
+  type GraphEdge,
+  type GraphModel,
+  type GraphNode,
+  type GraphPort,
+  type LaidOutEdge,
+  type LaidOutEdgeSection,
+  type LaidOutGraph,
+  type LaidOutNode,
+  type LayoutEngine,
+  type PortSide,
+} from './layout/index.js';
