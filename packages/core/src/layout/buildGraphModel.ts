@@ -10,8 +10,17 @@
 // out of their container, so `buildGraphModel` reports null and the
 // caller falls back to the synchronous compile path.
 
+import { measureText } from '../measure.js';
 import type { Primitive, Scene } from '../primitives.js';
+import type { Theme } from '../theme.js';
 import type { GraphEdge, GraphModel, GraphNode } from './graph.js';
+
+// Matches emit/labelBox.ts: padding + minimums applied to auto-fit nodes.
+// Keep in sync with DEFAULT_PADDING/min-width/min-height in that module so
+// ELK sees the same dimensions the emit pass will ultimately render.
+const AUTO_FIT_PADDING = 20;
+const AUTO_FIT_MIN_WIDTH = 80;
+const AUTO_FIT_MIN_HEIGHT = 40;
 
 export interface BuildGraphModelOptions {
   /** When true (default) a scene that contains any Frame is treated as
@@ -38,7 +47,7 @@ export function buildGraphModel(
 
   for (const primitive of primitives) {
     if (primitive.kind === 'labelBox') {
-      const node = labelBoxToNode(primitive);
+      const node = labelBoxToNode(primitive, scene.theme);
       nodes.push(node);
       nodeIds.add(node.id);
     }
@@ -61,17 +70,23 @@ export function buildGraphModel(
 
 function labelBoxToNode(
   primitive: Extract<Primitive, { kind: 'labelBox' }>,
+  theme: Theme,
 ): GraphNode {
   const node: GraphNode = {
     id: primitive.id,
     primitiveIds: [primitive.id],
   };
-  // Measured size takes priority; without it ELK falls back to engine
-  // defaults (DEFAULT_NODE_WIDTH/HEIGHT) which loosely match the
-  // labelBox auto-fit output from Phase 1.
+  // Explicit size (fit='fixed' or caller-pinned) wins. Otherwise mirror
+  // emitLabelBox's auto-fit so ELK sees the same dimensions the emit
+  // pass will produce; without this the engine default 160x60 is too
+  // small for multi-line or CJK labels and emit visibly clips the text.
   if (primitive.size !== undefined) {
     node.width = primitive.size[0];
     node.height = primitive.size[1];
+  } else {
+    const fit = computeAutoFitSize(primitive, theme);
+    node.width = fit.width;
+    node.height = fit.height;
   }
   // An explicit `at` is the LLM's (or user's) positional intent — pass
   // it to ELK as a fixed-position hint so the layer algorithm tries to
@@ -86,6 +101,22 @@ function labelBoxToNode(
     };
   }
   return node;
+}
+
+function computeAutoFitSize(
+  primitive: Extract<Primitive, { kind: 'labelBox' }>,
+  theme: Theme,
+): { width: number; height: number } {
+  if (primitive.text === undefined || primitive.text.length === 0) {
+    return { width: AUTO_FIT_MIN_WIDTH, height: AUTO_FIT_MIN_HEIGHT };
+  }
+  const fontFamily = primitive.fontFamily ?? theme.defaultFontFamily;
+  const fontSize = primitive.fontSize ?? theme.defaultFontSize;
+  const metrics = measureText({ text: primitive.text, fontSize, fontFamily });
+  return {
+    width: Math.max(metrics.width + AUTO_FIT_PADDING * 2, AUTO_FIT_MIN_WIDTH),
+    height: Math.max(metrics.height + AUTO_FIT_PADDING * 2, AUTO_FIT_MIN_HEIGHT),
+  };
 }
 
 function connectorToEdge(
