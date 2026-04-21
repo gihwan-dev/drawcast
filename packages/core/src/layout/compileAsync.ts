@@ -37,9 +37,34 @@ export async function compileAsync(
   }
 
   const engine = options.engine ?? new ElkLayoutEngine();
-  const laid = await engine.layout(graph);
+  let laid;
+  try {
+    laid = await engine.layout(graph);
+  } catch (error) {
+    // ELK's layered algorithm occasionally throws on graphs with certain
+    // cycle configurations (e.g. flow-ci-04: a 9-step linear chain where
+    // every step has a failure edge into the same `fix_repush` node and
+    // `fix_repush` loops back to the start — elkjs reports
+    // `java.util.NoSuchElementException`, bubbling the Java stdlib name
+    // up through the JS port). Losing the entire diagram over an
+    // auto-layout failure is worse than falling back to the LLM's `at`
+    // hints: the sync compile path still produces a readable scene,
+    // just without ELK's spacing pass. Surface the failure as a warning
+    // so `draw_export`'s warnPrefix mentions it and we can triage later.
+    const result = compile(scene);
+    result.warnings.push({
+      code: 'LAYOUT_ENGINE_FAILED',
+      message: `auto-layout fell back to input positions: ${messageFromError(error)}`,
+    });
+    return result;
+  }
   const enrichedScene = applyLayoutToScene(scene, laid);
   return compile(enrichedScene);
+}
+
+function messageFromError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
 
 /** Resolve the layout flag with a Node-default-on, browser-default-off
