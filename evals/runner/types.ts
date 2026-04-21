@@ -86,6 +86,13 @@ export interface MetricsResult {
   edge_count_fit: 0 | 1;
   concept_coverage: number;
   overlap_pairs: number;
+  /**
+   * Count of edge-label text elements (text with `containerId` bound to an
+   * arrow) whose bounding box overlaps a node shape. A non-zero count means
+   * an edge label is rendered on top of a node body, which is a hard
+   * readability regression that the VLM rubric consistently penalises.
+   */
+  edge_label_overlaps: number;
   has_branch?: boolean;
   has_loop?: boolean;
 }

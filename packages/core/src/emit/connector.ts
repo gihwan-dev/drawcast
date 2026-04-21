@@ -310,6 +310,111 @@ function findBlockingLabelBox(
   return null;
 }
 
+/** Gap the label keeps around any LabelBox after nudging. */
+const LABEL_NUDGE_GAP = 4;
+/** Cap on nudge iterations so we never loop on an unsolvable case. */
+const LABEL_NUDGE_MAX_ITER = 6;
+
+/**
+ * Axis-aligned bbox overlap. Uses strict `<` so boxes that share exactly an
+ * edge pixel don't count (matches `countOverlaps` in the eval metrics).
+ */
+function bboxOverlaps(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  b: ObstacleBBox,
+): boolean {
+  return x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + h > b.y;
+}
+
+function findOverlappingLabelBox(
+  labelX: number,
+  labelY: number,
+  labelW: number,
+  labelH: number,
+  excludeIds: ReadonlySet<PrimitiveId>,
+  ctx: CompileContext,
+): ObstacleBBox | null {
+  for (const [id, record] of ctx.registry) {
+    if (excludeIds.has(id)) continue;
+    if (record.kind !== 'labelBox') continue;
+    if (bboxOverlaps(labelX, labelY, labelW, labelH, record.bbox)) {
+      return record.bbox;
+    }
+  }
+  return null;
+}
+
+/**
+ * Slide the edge-label anchor along the tangent direction until the label's
+ * bbox no longer overlaps any non-endpoint LabelBox. Needed because the
+ * polyline midpoint can sit just inside a neighbour node when ELK packs
+ * nodes close together (arch-cdn-03: "읽기"/"쓰기" labels clipping the
+ * edge of the Redis Cache box). Returns the adjusted anchor centre, or
+ * the original if no clear position was found within the iteration cap.
+ */
+function nudgeLabelAwayFromNodes(
+  midX: number,
+  midY: number,
+  labelW: number,
+  labelH: number,
+  tangent: Point,
+  excludeIds: ReadonlySet<PrimitiveId>,
+  ctx: CompileContext,
+): Point {
+  const tLen = Math.hypot(tangent[0], tangent[1]);
+  // Degenerate tangent (zero-length segment): give up — the label has no
+  // direction to slide along without leaving the edge altogether.
+  if (tLen < 1e-6) return [midX, midY];
+  const tx = tangent[0] / tLen;
+  const ty = tangent[1] / tLen;
+
+  let cx = midX;
+  let cy = midY;
+  for (let i = 0; i < LABEL_NUDGE_MAX_ITER; i += 1) {
+    const x = cx - labelW / 2;
+    const y = cy - labelH / 2;
+    const hit = findOverlappingLabelBox(x, y, labelW, labelH, excludeIds, ctx);
+    if (!hit) return [cx, cy];
+    // Slide away from the obstacle centre along the tangent. Projecting
+    // the "away" vector onto the tangent picks the side of the overlap
+    // that is closer to clear space along the edge.
+    const awayDx = cx - (hit.x + hit.w / 2);
+    const awayDy = cy - (hit.y + hit.h / 2);
+    const dir = awayDx * tx + awayDy * ty >= 0 ? 1 : -1;
+    // Distance needed to clear the obstacle along tangent — take the
+    // larger axis overlap so a single shift usually resolves.
+    const overlapX = Math.min(x + labelW - hit.x, hit.x + hit.w - x);
+    const overlapY = Math.min(y + labelH - hit.y, hit.y + hit.h - y);
+    const shift = Math.max(overlapX, overlapY, 1) + LABEL_NUDGE_GAP;
+    cx += tx * shift * dir;
+    cy += ty * shift * dir;
+  }
+  return [midX, midY];
+}
+
+/**
+ * Tangent vector at the label anchor, matching `computeLabelAnchor`'s
+ * segment choice so a nudge slides the label along the visible edge line.
+ */
+function tangentAtLabelAnchor(points: readonly Point[]): Point {
+  if (points.length < 2) return [1, 0];
+  if (points.length % 2 === 1) {
+    // Middle waypoint: average the incoming and outgoing directions so a
+    // corner kink gives a sensible glide direction.
+    const i = Math.floor(points.length / 2);
+    const prev = points[i - 1]!;
+    const next = points[i + 1]!;
+    return [next[0] - prev[0], next[1] - prev[1]];
+  }
+  const i = points.length / 2 - 1;
+  const a = points[i]!;
+  const b = points[i + 1]!;
+  return [b[0] - a[0], b[1] - a[1]];
+}
+
 /**
  * Build an L-shaped detour around `obstacle` going via the single corner
  * that lies on the far side of the obstacle relative to the straight line.
@@ -642,6 +747,25 @@ export function emitConnector(
       midX = mx + ux * axisShift;
       midY = my + uy * axisShift;
     }
+
+    // Shift the anchor along the edge tangent when the label bbox overlaps
+    // a neighbouring LabelBox. ELK can pack nodes close enough that the
+    // polyline midpoint lands ~2px inside an adjacent box (arch-cdn-03:
+    // "읽기"/"쓰기" labels clipping the Redis Cache corner). Endpoints
+    // are excluded so labels still rest flush against their own source
+    // and target boxes — that's expected behaviour for a bound label.
+    const labelExclude = new Set<PrimitiveId>();
+    if (typeof p.from === 'string') labelExclude.add(p.from);
+    if (typeof p.to === 'string') labelExclude.add(p.to);
+    [midX, midY] = nudgeLabelAwayFromNodes(
+      midX,
+      midY,
+      metrics.width,
+      metrics.height,
+      tangentAtLabelAnchor(rawPoints),
+      labelExclude,
+      ctx,
+    );
 
     const labelBase = baseElementFields({
       id: labelId,

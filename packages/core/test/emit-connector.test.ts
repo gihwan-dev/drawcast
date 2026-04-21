@@ -692,4 +692,68 @@ describe('emitConnector — straight-line obstacle detour (arch-cdn-03)', () => 
     const arrow = findArrow(result.elements);
     expect(arrow.points.length).toBe(2);
   });
+
+  it('edge label is nudged along the edge tangent when it overlaps a neighbouring node', () => {
+    // Regression for arch-cdn-03: Web Server A → Read Replica A edge
+    // runs vertically past the Redis Cache A box. The polyline midpoint
+    // lands just inside the Redis box's right edge, so the "읽기" label
+    // clips the node corner. The nudge should slide the label along the
+    // tangent (vertical here) so the bbox no longer overlaps the
+    // neighbour, even though the neighbour is not an endpoint of the edge.
+    const source: LabelBox = {
+      kind: 'labelBox',
+      id: 'source' as PrimitiveId,
+      shape: 'rectangle',
+      at: [200, 100],
+      fit: 'fixed',
+      size: [200, 60],
+      text: 'Source',
+    };
+    const target: LabelBox = {
+      kind: 'labelBox',
+      id: 'target' as PrimitiveId,
+      shape: 'rectangle',
+      at: [200, 500],
+      fit: 'fixed',
+      size: [200, 60],
+      text: 'Target',
+    };
+    // Neighbour parked right where the edge midpoint would land (y=300).
+    const neighbour: LabelBox = {
+      kind: 'labelBox',
+      id: 'neighbour' as PrimitiveId,
+      shape: 'rectangle',
+      at: [110, 300],
+      fit: 'fixed',
+      size: [200, 80],
+      text: 'Neighbour',
+    };
+    const edge: Connector = {
+      kind: 'connector',
+      id: 'edge' as PrimitiveId,
+      from: 'source' as PrimitiveId,
+      to: 'target' as PrimitiveId,
+      label: '읽기',
+      routing: 'straight',
+    };
+    const result = compile(makeScene([source, target, neighbour, edge]));
+    const arrowLabel = result.elements.find(
+      (el) =>
+        el.type === 'text' &&
+        (el as { text?: string }).text === '읽기',
+    ) as { x: number; y: number; width: number; height: number } | undefined;
+    expect(arrowLabel).toBeDefined();
+    // Neighbour bbox is x∈[10,210], y∈[260,340]. The label bbox after the
+    // nudge must sit clear of that rectangle.
+    const lx1 = arrowLabel!.x;
+    const ly1 = arrowLabel!.y;
+    const lx2 = lx1 + arrowLabel!.width;
+    const ly2 = ly1 + arrowLabel!.height;
+    const nx1 = 10;
+    const ny1 = 260;
+    const nx2 = 210;
+    const ny2 = 340;
+    const overlaps = lx1 < nx2 && lx2 > nx1 && ly1 < ny2 && ly2 > ny1;
+    expect(overlaps).toBe(false);
+  });
 });
