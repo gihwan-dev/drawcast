@@ -16,3 +16,5 @@ export type {
   LaidOutNode,
   LayoutEngine,
 } from './engine.js';
+
+export { ElkLayoutEngine, type ElkLayoutEngineOptions } from './elkEngine.js';
