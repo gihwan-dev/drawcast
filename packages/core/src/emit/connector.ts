@@ -41,6 +41,10 @@ const PARALLEL_LANE_SPACING = 120;
 // lifting for the common shape-to-shape case.
 const PARALLEL_LABEL_AXIS_OFFSET = 0.15;
 
+// High-contrast dark used for every edge label so red/muted/accent edges
+// don't produce low-contrast bound text.
+const EDGE_LABEL_TEXT_COLOR = '#1e1e1e';
+
 export interface ConnectorLane {
   /** 0-based index of this connector within its parallel group. */
   index: number;
@@ -425,7 +429,11 @@ export function emitConnector(
       width: metrics.width,
       height: metrics.height,
       angle: 0 as Radians,
-      strokeColor: style.strokeColor,
+      // Edge labels always render in a high-contrast dark color, not the
+      // edge's stroke color. Tinted edges (accent/muted/custom) drag label
+      // text below AA contrast against the canvas, and VLM rubrics flag the
+      // resulting short labels ("재입력", "재발송", …) as illegible.
+      strokeColor: EDGE_LABEL_TEXT_COLOR,
       backgroundColor: 'transparent',
       fillStyle: 'solid',
       strokeWidth: style.strokeWidth,
