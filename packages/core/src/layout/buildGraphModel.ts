@@ -11,16 +11,27 @@
 // caller falls back to the synchronous compile path.
 
 import { measureText } from '../measure.js';
-import type { Primitive, Scene } from '../primitives.js';
+import { wrapText } from '../wrap.js';
+import type { LabelBox, Primitive, Scene } from '../primitives.js';
 import type { Theme } from '../theme.js';
 import type { GraphEdge, GraphModel, GraphNode } from './graph.js';
 
-// Matches emit/labelBox.ts: padding + minimums applied to auto-fit nodes.
-// Keep in sync with DEFAULT_PADDING/min-width/min-height in that module so
-// ELK sees the same dimensions the emit pass will ultimately render.
-const AUTO_FIT_PADDING = 20;
-const AUTO_FIT_MIN_WIDTH = 80;
-const AUTO_FIT_MIN_HEIGHT = 40;
+// Kept in sync with emit/labelBox.ts (DEFAULT_PADDING, FIXED_FALLBACK_*)
+// so a node sized here survives round-trip through ELK and the emit
+// layer without growing or shrinking. A mismatch would show up as the
+// emit path re-fitting the shape to a different size than ELK reserved.
+const LAYOUT_PADDING = 20;
+const MIN_LAYOUT_WIDTH = 80;
+const MIN_LAYOUT_HEIGHT = 40;
+const FIXED_FALLBACK_WIDTH = 150;
+const FIXED_FALLBACK_HEIGHT = 60;
+// Ellipse/diamond bounding boxes must be larger than their inscribed
+// rectangle, otherwise the emit layer's `maxTextWidth = width - 2*padding`
+// clamps wrap to fewer lines than ELK reserved vertical space for and
+// the glyph run leaks past the curved/angled edges. √2 matches the
+// inscribed-rectangle-in-ellipse ratio; diamond's worst case is the
+// same under the (w, h) symmetric assumption emitLabelBox already makes.
+const NON_RECT_INFLATION = Math.SQRT2;
 
 export interface BuildGraphModelOptions {
   /** When true (default) a scene that contains any Frame is treated as
@@ -55,7 +66,7 @@ export function buildGraphModel(
 
   for (const primitive of primitives) {
     if (primitive.kind === 'connector') {
-      const edge = connectorToEdge(primitive, nodeIds);
+      const edge = connectorToEdge(primitive, nodeIds, scene.theme);
       if (edge !== null) edges.push(edge);
     }
   }
@@ -72,56 +83,118 @@ function labelBoxToNode(
   primitive: Extract<Primitive, { kind: 'labelBox' }>,
   theme: Theme,
 ): GraphNode {
+  const { width, height } = measureLabelBoxSize(primitive, theme);
   const node: GraphNode = {
     id: primitive.id,
     primitiveIds: [primitive.id],
+    width,
+    height,
   };
-  // Explicit size (fit='fixed' or caller-pinned) wins. Otherwise mirror
-  // emitLabelBox's auto-fit so ELK sees the same dimensions the emit
-  // pass will produce; without this the engine default 160x60 is too
-  // small for multi-line or CJK labels and emit visibly clips the text.
-  if (primitive.size !== undefined) {
-    node.width = primitive.size[0];
-    node.height = primitive.size[1];
-  } else {
-    const fit = computeAutoFitSize(primitive, theme);
-    node.width = fit.width;
-    node.height = fit.height;
-  }
   // An explicit `at` is the LLM's (or user's) positional intent — pass
   // it to ELK as a fixed-position hint so the layer algorithm tries to
-  // respect it. `at` is centre-based; ELK expects top-left, so we need
-  // a size to translate and skip the hint otherwise. Layered treats
+  // respect it. `at` is centre-based; ELK expects top-left, so convert
+  // using the measured (not necessarily declared) size. Layered treats
   // `elk.position` as a soft hint today; Phase 3 will introduce the
   // interactive/fixed algorithm for hard pinning.
-  if (primitive.at !== undefined && primitive.size !== undefined) {
+  if (primitive.at !== undefined) {
     node.fixedPosition = {
-      x: primitive.at[0] - primitive.size[0] / 2,
-      y: primitive.at[1] - primitive.size[1] / 2,
+      x: primitive.at[0] - width / 2,
+      y: primitive.at[1] - height / 2,
     };
   }
   return node;
 }
 
-function computeAutoFitSize(
-  primitive: Extract<Primitive, { kind: 'labelBox' }>,
+/**
+ * Pick a bounding box for a LabelBox before it enters the layout engine.
+ *
+ * Without this the ELK engine falls back to its generic 160×60 default
+ * (see elkEngine.ts DEFAULT_NODE_WIDTH/HEIGHT), which is too small for
+ * multi-line Korean labels like "이메일 / 비밀번호 입력" — ELK reserves
+ * a box that the emit-layer text node then overflows (#36).
+ *
+ * The goal is size parity with `emitLabelBox`'s own auto-fit output so
+ * a node sized here stays that size after `applyLayoutToScene` pins it
+ * via `fit:'fixed'` and the emit layer reads it back.
+ */
+function measureLabelBoxSize(
+  primitive: LabelBox,
   theme: Theme,
 ): { width: number; height: number } {
-  if (primitive.text === undefined || primitive.text.length === 0) {
-    return { width: AUTO_FIT_MIN_WIDTH, height: AUTO_FIT_MIN_HEIGHT };
-  }
-  const fontFamily = primitive.fontFamily ?? theme.defaultFontFamily;
   const fontSize = primitive.fontSize ?? theme.defaultFontSize;
-  const metrics = measureText({ text: primitive.text, fontSize, fontFamily });
-  return {
-    width: Math.max(metrics.width + AUTO_FIT_PADDING * 2, AUTO_FIT_MIN_WIDTH),
-    height: Math.max(metrics.height + AUTO_FIT_PADDING * 2, AUTO_FIT_MIN_HEIGHT),
-  };
+  const fontFamily = primitive.fontFamily ?? theme.defaultFontFamily;
+
+  let width: number;
+  let height: number;
+
+  if (primitive.fit === 'fixed') {
+    // fit:'fixed' pins the declared width through emit. Mirror the emit
+    // fallback when size is missing rather than measure (users who opt
+    // into fixed are signalling "don't auto-fit" the width).
+    if (primitive.size !== undefined) {
+      width = primitive.size[0];
+      height = primitive.size[1];
+    } else {
+      width = FIXED_FALLBACK_WIDTH;
+      height = FIXED_FALLBACK_HEIGHT;
+    }
+  } else if (primitive.size !== undefined) {
+    // Auto fit but caller handed us an explicit size; don't silently
+    // discard it.
+    width = primitive.size[0];
+    height = primitive.size[1];
+  } else if (primitive.text !== undefined && primitive.text !== '') {
+    // No size: measure the raw text and pad, matching emitLabelBox's
+    // own auto-fit rule. Wrapping isn't applied here — we don't yet
+    // know a target max width, so we reserve the whole unwrapped run.
+    const metrics = measureText({
+      text: primitive.text,
+      fontSize,
+      fontFamily,
+    });
+    width = Math.max(metrics.width + LAYOUT_PADDING * 2, MIN_LAYOUT_WIDTH);
+    height = Math.max(metrics.height + LAYOUT_PADDING * 2, MIN_LAYOUT_HEIGHT);
+  } else {
+    width = MIN_LAYOUT_WIDTH;
+    height = MIN_LAYOUT_HEIGHT;
+  }
+
+  // Guarantee the reserved box can contain the wrapped glyph run. A
+  // caller that pins width via fit:'fixed' still expects text to fit;
+  // CJK labels frequently wrap into more lines than the raw height was
+  // sized for, and without this the emit layer renders text spilling
+  // below the shape into nearby edge labels (arch-cdn-03 eval).
+  if (primitive.text !== undefined && primitive.text !== '') {
+    const maxTextWidth = Math.max(width - LAYOUT_PADDING * 2, 1);
+    const wrapped = wrapText({
+      text: primitive.text,
+      maxWidth: maxTextWidth,
+      fontSize,
+      fontFamily,
+    });
+    const wrappedMetrics = measureText({
+      text: wrapped,
+      fontSize,
+      fontFamily,
+    });
+    // Only expand when the wrapped text itself would not fit — the
+    // declared height already includes the caller's preferred padding.
+    if (wrappedMetrics.height > height) {
+      height = wrappedMetrics.height + LAYOUT_PADDING * 2;
+    }
+  }
+
+  if (primitive.shape !== 'rectangle') {
+    width = Math.ceil(width * NON_RECT_INFLATION);
+    height = Math.ceil(height * NON_RECT_INFLATION);
+  }
+  return { width, height };
 }
 
 function connectorToEdge(
   primitive: Extract<Primitive, { kind: 'connector' }>,
   knownNodeIds: ReadonlySet<string>,
+  theme: Theme,
 ): GraphEdge | null {
   // Only id-bound connectors participate. Raw Point endpoints are for
   // floating annotation arrows and must not influence layered layout.
@@ -133,10 +206,30 @@ function connectorToEdge(
   if (!knownNodeIds.has(primitive.from) || !knownNodeIds.has(primitive.to)) {
     return null;
   }
-  return {
+  const edge: GraphEdge = {
     id: primitive.id,
     source: primitive.from,
     target: primitive.to,
     routing: 'orthogonal',
   };
+  // Measure label so ELK's layered algorithm can reserve space for it.
+  // Without this the emitted text — which Excalidraw repositions to the
+  // arrow midpoint — ends up on top of nearby nodes in dense graphs
+  // (e.g. the retry-heavy CI flowchart where multiple "실패" labels
+  // cluster around a single "fix & re-push" target).
+  if (primitive.label !== undefined && primitive.label !== '') {
+    const fontSize = theme.defaultFontSize;
+    const fontFamily = theme.defaultFontFamily;
+    const metrics = measureText({
+      text: primitive.label,
+      fontSize,
+      fontFamily,
+    });
+    edge.label = {
+      text: primitive.label,
+      width: metrics.width,
+      height: metrics.height,
+    };
+  }
+  return edge;
 }

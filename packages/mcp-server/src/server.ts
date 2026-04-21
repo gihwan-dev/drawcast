@@ -57,7 +57,8 @@ const DEFAULT_INSTRUCTIONS = `You are drawing a diagram into a shared Excalidraw
 3. Keep edge labels short (≤8 chars, e.g. "예"/"아니오"/"success"/"fail"). Long labels collide with neighbouring boxes; move detail into the connected box's text instead.
 4. Branches go in their own columns. For decision diamonds, place the "yes" child and "no" child in different columns at the same y row, then merge below if needed.
 5. Upsert ids should be stable — re-upserting the same id repositions rather than duplicating. Prefer getting coordinates right the first time over iterative nudges.
-6. End the session as soon as the diagram is complete. The host runner fetches the scene via draw_export automatically, so you do not need to call draw_export yourself unless asked.`;
+6. Stay in scope. Draw only the elements the user explicitly asked for; do not invent retry loops, validation retries, logging, or "end/terminate" nodes that were not requested. If the prompt lists N steps, N boxes plus one start/end node each is usually enough — prefer 5–8 boxes for a simple flow over 10+. Adding undemanded branches clutters the layout and hurts readability more than it adds information.
+7. End the session as soon as the diagram is complete. The host runner fetches the scene via draw_export automatically, so you do not need to call draw_export yourself unless asked.`;
 
 export function createServer(options: CreateServerOptions = {}): DrawcastServer {
   const name = options.name ?? DEFAULT_NAME;

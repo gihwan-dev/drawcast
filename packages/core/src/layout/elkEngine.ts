@@ -10,6 +10,7 @@ import ElkConstructor, {
   type ELK,
   type ElkEdgeSection,
   type ElkExtendedEdge,
+  type ElkLabel,
   type ElkNode,
   type ElkPoint,
   type ElkPort,
@@ -54,7 +55,27 @@ const ALGORITHM_BY_TYPE: Record<DiagramType, string> = {
 
 /** Baseline layout options. Values kept as strings because ELK's JSON
  *  options dict expects strings regardless of the underlying numeric
- *  type. `elk.randomSeed` pins determinism per docs §2.4. */
+ *  type. `elk.randomSeed` pins determinism per docs §2.4.
+ *
+ *  `layering.strategy=LONGEST_PATH_SOURCE` anchors every source node
+ *  (incoming-edge count == 0, e.g. the "start" primitive in a flowchart)
+ *  to the first layer. ELK's default `NETWORK_SIMPLEX` minimises total
+ *  edge length and, in graphs with retry loops (e.g. "재시도? → 입력"),
+ *  happily demotes the source to a middle/bottom layer — which rubric
+ *  reviewers consistently flagged as an unnatural flow. This strategy
+ *  does not depend on Claude's node-definition order, so it's stable
+ *  across the non-deterministic AI output.
+ *
+ *  `cycleBreaking.strategy=INTERACTIVE` uses the y coordinate supplied
+ *  via `fixedPosition` (set by `buildGraphModel` from the LLM's `at`
+ *  hint) to decide which edges are "back edges". The default `GREEDY`
+ *  picks the minimum feedback arc set, which can reverse the wrong
+ *  edge in multi-retry flowcharts: e.g. in a login flow with both an
+ *  "invalid input → input" and a "failed auth → input" retry, greedy
+ *  reverses the single forward edge `input → validate` because it
+ *  breaks both cycles at once — promoting `validate` to a source and
+ *  burying `input` at the bottom. Using the y hint to detect back
+ *  edges keeps the semantically-forward edge pointing downward. */
 const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   'elk.algorithm': 'layered',
   'elk.direction': 'DOWN',
@@ -62,6 +83,25 @@ const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   'elk.layered.spacing.nodeNodeBetweenLayers': '60',
   'elk.edgeRouting': 'ORTHOGONAL',
   'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+  'elk.layered.layering.strategy': 'LONGEST_PATH_SOURCE',
+  'elk.layered.cycleBreaking.strategy': 'INTERACTIVE',
+  // Edge labels travel through the graph model carrying measured size
+  // (see buildGraphModel.ts). `edgeLabelSpacing` gives the routing pass
+  // enough perpendicular slack that the label — which Excalidraw pins
+  // to the arrow midpoint at render time — doesn't crash into nodes or
+  // other labels when many feedback edges converge on one target.
+  'elk.layered.spacing.edgeLabelSpacing': '12',
+  'elk.spacing.edgeLabel': '8',
+  // Parallel arrows between the same node pair (e.g. request/response in
+  // arch-3tier-01) end up only ~30px apart on each side of the boundary
+  // with ELK's default port distribution. Bound text labels are pinned
+  // to the arrow midpoint by Excalidraw, so when the perpendicular gap
+  // is narrower than the label width the two label runs overlap
+  // ("HTTP 응답HTTP 요청"). Bumping `spacing.edgeEdge` widens the lane
+  // so labels stop crashing into one another while still keeping
+  // architecture diagrams compact.
+  'elk.spacing.edgeEdge': '120',
+  'elk.layered.spacing.edgeEdgeBetweenLayers': '40',
   'elk.randomSeed': '1',
 };
 
@@ -133,11 +173,20 @@ function toElkPort(port: GraphPort): ElkPort {
 }
 
 function toElkEdge(edge: GraphEdge): ElkExtendedEdge {
-  return {
+  const out: ElkExtendedEdge = {
     id: edge.id,
     sources: [edge.sourcePort ?? edge.source],
     targets: [edge.targetPort ?? edge.target],
   };
+  if (edge.label !== undefined) {
+    const label: ElkLabel = {
+      text: edge.label.text,
+      width: edge.label.width,
+      height: edge.label.height,
+    };
+    out.labels = [label];
+  }
+  return out;
 }
 
 function fromElkResult(original: GraphModel, result: ElkNode): LaidOutGraph {

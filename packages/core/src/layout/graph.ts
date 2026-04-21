@@ -73,6 +73,16 @@ export interface GraphEdge {
   targetPort?: string;
   routing?: EdgeRouting;
   protocol?: EdgeProtocol;
+  /** Measured label dimensions (see buildGraphModel.ts). Passing the
+   *  label size to ELK lets the layered algorithm reserve space along
+   *  the edge so the label — which Excalidraw renders at the arrow
+   *  midpoint — doesn't land on top of a node or another label in
+   *  retry-heavy flowcharts. */
+  label?: {
+    text: string;
+    width: number;
+    height: number;
+  };
 }
 
 export interface GraphModel {
