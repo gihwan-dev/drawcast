@@ -11,7 +11,7 @@
 // caller falls back to the synchronous compile path.
 
 import { measureText } from '../measure.js';
-import { wrapText } from '../wrap.js';
+import { measureLongestUnbreakableWord, wrapText } from '../wrap.js';
 import type { LabelBox, Primitive, Scene } from '../primitives.js';
 import type { Theme } from '../theme.js';
 import type { GraphEdge, GraphModel, GraphNode } from './graph.js';
@@ -165,6 +165,31 @@ function measureLabelBoxSize(
   // sized for, and without this the emit layer renders text spilling
   // below the shape into nearby edge labels (arch-cdn-03 eval).
   if (primitive.text !== undefined && primitive.text !== '') {
+    // Widen the box when a non-CJK token would exceed the post-padding
+    // available width and get hard-broken mid-glyph. Rubric reviewers on
+    // state-tcp-02 flagged "SYN_RECEIV\nED" as unreadable: the fixed
+    // size [160, 55] left 120px available for a 132px token, so
+    // `wrapText.hardBreak` chopped at the underscore. CJK runs are
+    // skipped — "이메일 중복 체크" wrapping at its spaces is expected.
+    //
+    // Only widen when the token genuinely overruns `maxTextWidth`, so
+    // callers that pass a narrow box intending whitespace-based wrapping
+    // (e.g. size [120, 80] for "multi line label that probably wraps")
+    // keep their declared width. Cap at 2× the declared width so a
+    // pathologically long single token (the 500-char fixture below)
+    // doesn't blow the box up.
+    const longestToken = measureLongestUnbreakableWord({
+      text: primitive.text,
+      fontSize,
+      fontFamily,
+    });
+    const availableForText = Math.max(width - LAYOUT_PADDING * 2, 1);
+    if (longestToken > availableForText) {
+      const minWidthForTokens = longestToken + LAYOUT_PADDING * 2;
+      if (minWidthForTokens <= width * 2) {
+        width = minWidthForTokens;
+      }
+    }
     const maxTextWidth = Math.max(width - LAYOUT_PADDING * 2, 1);
     const wrapped = wrapText({
       text: primitive.text,

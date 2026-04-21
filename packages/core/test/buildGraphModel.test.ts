@@ -144,6 +144,51 @@ describe('buildGraphModel — labelBox size measurement', () => {
     expect(n.height).toBe(60);
   });
 
+  it('widens a fixed-size box when a non-CJK token would be hard-broken', () => {
+    // Regression guard for state-tcp-02 eval: Claude emitted the
+    // "SYN_RECEIVED" state node with fit:'fixed' size [160, 55], but the
+    // 12-glyph identifier measured ~132px and the 2*20 padding pushed
+    // the single-line width past 160. `wrapText.hardBreak` then chopped
+    // the token mid-glyph ("SYN_RECEIV\nED"), which rubric reviewers
+    // flagged as unreadable. Force the box to grow so the token stays
+    // on one line.
+    const box: LabelBox = {
+      kind: 'labelBox',
+      id: 'syn' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [160, 55],
+      text: 'SYN_RECEIVED',
+    };
+    const graph = buildGraphModel(makeScene([box]));
+    const n = node('syn', graph);
+    const tokenWidth = measureText({
+      text: 'SYN_RECEIVED',
+      fontSize: sketchyTheme.defaultFontSize,
+      fontFamily: sketchyTheme.defaultFontFamily,
+    }).width;
+    // Width must fit the token plus the standard 2*20 padding on each
+    // side so `wrapText` with maxWidth = width - 40 keeps it on one line.
+    expect(n.width).toBeGreaterThanOrEqual(tokenWidth + PADDING * 2);
+  });
+
+  it('does not inflate width when the token is a pathologically long run', () => {
+    // Safety rail for the widening rule above: a caller who passes a
+    // narrow box with a single huge token (e.g. a 500-char filler
+    // string, long URL, etc.) is signalling "wrap inside this width",
+    // not "make the box 20x wider". Cap expansion at 2× declared width.
+    const box: LabelBox = {
+      kind: 'labelBox',
+      id: 'narrow-wrap' as PrimitiveId,
+      shape: 'rectangle',
+      size: [200, 80],
+      text: 'x'.repeat(500),
+    };
+    const graph = buildGraphModel(makeScene([box]));
+    const n = node('narrow-wrap', graph);
+    expect(n.width).toBe(200);
+  });
+
   it('derives fixedPosition from `at` using the measured size', () => {
     const box: LabelBox = {
       kind: 'labelBox',

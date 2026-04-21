@@ -168,3 +168,33 @@ export function wrapText(params: WrapParams): string {
   }
   return out.join('\n');
 }
+
+/**
+ * Width of the widest non-CJK token in `text` (i.e., the narrowest the
+ * container can be without hard-breaking a word mid-character).
+ *
+ * CJK tokens are excluded because breaking a Korean phrase across lines
+ * is an expected wrap point, not a defect — e.g. "이메일 중복 체크"
+ * legitimately wraps at the spaces. Non-CJK identifiers like
+ * "SYN_RECEIVED" or "PostgreSQL" have no whitespace, so `hardBreak`
+ * chops them mid-glyph ("SYN_RECEIV\nED"), which rubric reviewers
+ * consistently flag as unreadable. Callers can use this to widen the
+ * container before emitting so the token stays on one line.
+ */
+export function measureLongestUnbreakableWord(params: {
+  text: string;
+  fontSize: number;
+  fontFamily: FontFamilyId;
+}): number {
+  const { text, fontSize, fontFamily } = params;
+  let widest = 0;
+  for (const paragraph of text.split('\n')) {
+    for (const tok of tokenize(paragraph)) {
+      if (isWhitespaceToken(tok)) continue;
+      if (Array.from(tok).some((ch) => isCjk(ch))) continue;
+      const w = widthOf(tok, fontSize, fontFamily);
+      if (w > widest) widest = w;
+    }
+  }
+  return widest;
+}
