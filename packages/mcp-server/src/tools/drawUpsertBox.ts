@@ -26,6 +26,7 @@ import {
   normalizeStyleRef,
 } from './utils.js';
 import { requestScenePreview } from './helpers/preview.js';
+import { sanitizeLabelText } from './helpers/textSanitize.js';
 
 const ShapeSchema = z.enum(['rectangle', 'ellipse', 'diamond']);
 const TextAlignSchema = z.enum(['left', 'center', 'right']);
@@ -139,7 +140,7 @@ export const drawUpsertBox = defineTool({
       id: args.id as PrimitiveId,
       shape: args.shape ?? 'rectangle',
       at: [args.at[0], args.at[1]],
-      ...(args.text !== undefined && { text: args.text }),
+      ...(args.text !== undefined && { text: sanitizeLabelText(args.text) }),
       ...(args.style !== undefined && { style: normalizeStyleRef(args.style) }),
       ...(args.fit !== undefined && { fit: args.fit }),
       ...(args.size !== undefined && {

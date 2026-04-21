@@ -24,6 +24,7 @@ import {
   normalizeStyleRef,
 } from './utils.js';
 import { requestScenePreview } from './helpers/preview.js';
+import { sanitizeLabelText } from './helpers/textSanitize.js';
 
 const EndpointSchema = z.union([z.string().min(1), PointSchema]);
 const RoutingSchema = z.enum(['straight', 'elbow', 'curved']);
@@ -142,7 +143,7 @@ export const drawUpsertEdge = defineTool({
       id: args.id as PrimitiveId,
       from: resolveEndpoint(args.from),
       to: resolveEndpoint(args.to),
-      ...(args.label !== undefined && { label: args.label }),
+      ...(args.label !== undefined && { label: sanitizeLabelText(args.label) }),
       ...(args.routing !== undefined && { routing: args.routing }),
       ...(args.arrowhead !== undefined && {
         arrowhead: {

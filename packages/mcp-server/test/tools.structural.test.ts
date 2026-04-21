@@ -200,4 +200,22 @@ describe('draw_upsert_frame', () => {
     expect(result.isError).toBe(true);
     expect(result.content).toHaveLength(1);
   });
+
+  it('converts a literal \\n inside the frame title into a real newline', async () => {
+    // Regression: frame titles carry the same multi-line hazard as box
+    // text / edge labels.
+    const store = new SceneStore();
+    await drawUpsertFrame.execute(
+      {
+        id: 'f',
+        title: 'Sprint 1\\nWeek 1',
+        at: [0, 0],
+        size: [400, 300],
+        children: [],
+      },
+      store,
+    );
+    const stored = store.getPrimitive(asId('f')) as Frame;
+    expect(stored.title).toBe('Sprint 1\nWeek 1');
+  });
 });

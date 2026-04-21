@@ -22,6 +22,7 @@ import {
   normalizeReturnPreview,
 } from './utils.js';
 import { requestScenePreview } from './helpers/preview.js';
+import { sanitizeLabelText } from './helpers/textSanitize.js';
 
 export const drawUpsertFrameInputSchema = z.object({
   id: z.string().min(1),
@@ -95,7 +96,7 @@ export const drawUpsertFrame = defineTool({
       at: [args.at[0], args.at[1]],
       size: [args.size[0], args.size[1]] as const,
       children: args.children.map((c) => c as PrimitiveId),
-      ...(args.title !== undefined && { title: args.title }),
+      ...(args.title !== undefined && { title: sanitizeLabelText(args.title) }),
       ...(args.magic !== undefined && { magic: args.magic }),
       ...(args.angle !== undefined && { angle: args.angle }),
       ...(args.locked !== undefined && { locked: args.locked }),

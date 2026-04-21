@@ -174,4 +174,17 @@ describe('draw_upsert_box', () => {
     expect(result.content).toHaveLength(1);
     expect(result.content[0]).toMatchObject({ type: 'text' });
   });
+
+  it('converts a literal \\n inside the text into a real newline', async () => {
+    // Regression: some MCP clients double-encode newlines as the two
+    // characters `\` + `n`, which would otherwise land in Excalidraw as
+    // a visible glyph instead of a line break.
+    const store = new SceneStore();
+    await drawUpsertBox.execute(
+      { id: 'decision', at: [0, 0], text: '재시도 횟수\\n초과?' },
+      store,
+    );
+    const stored = store.getPrimitive(asId('decision')) as LabelBox;
+    expect(stored.text).toBe('재시도 횟수\n초과?');
+  });
 });
