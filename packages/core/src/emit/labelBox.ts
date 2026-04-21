@@ -19,7 +19,7 @@ import {
   type BaseElementFields,
 } from '../utils/baseElementFields.js';
 import { newElementId } from '../utils/id.js';
-import { getLineHeight, measureText } from '../measure.js';
+import { getLineHeight, measureText, type TextMetrics } from '../measure.js';
 import { wrapText } from '../wrap.js';
 import type {
   ExcalidrawDiamondElement,
@@ -92,6 +92,38 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
     }
   }
 
+  // Pre-wrap the text and expand the container height if the wrapped glyph
+  // run needs more vertical room than the declared box. Callers that pass
+  // fit:'fixed' with a height sized for the raw (unwrapped) line count —
+  // common with CJK labels that wrap into more lines once width is clamped —
+  // would otherwise overflow the shape and collide with neighbouring edge
+  // labels (see arch-cdn-03 eval: "PostgreSQL" spilled into a nearby
+  // "replicate" label below the Main DB node).
+  let prewrappedText: string | undefined;
+  let prewrappedMetrics: TextMetrics | undefined;
+  if (p.text) {
+    const maxTextWidth = Math.max(width - padding * 2, 1);
+    prewrappedText = wrapText({
+      text: p.text,
+      maxWidth: maxTextWidth,
+      fontSize,
+      fontFamily,
+    });
+    prewrappedMetrics = measureText({
+      text: prewrappedText,
+      fontSize,
+      fontFamily,
+      lineHeight,
+    });
+    // Only expand when the wrapped text itself would not fit — the caller's
+    // declared height already accounts for their preferred padding, so a
+    // single-line label in an 80×40 box should stay 80×40 rather than grow
+    // to include an extra 20px top/bottom of reserved padding.
+    if (prewrappedMetrics.height > height) {
+      height = prewrappedMetrics.height + padding * 2;
+    }
+  }
+
   // -- Roundness (P10 matrix) --------------------------------------------------
   // rectangle / diamond accept {type:3}. ellipse always null (ignored anyway).
   let roundness: Roundness = null;
@@ -144,19 +176,24 @@ export function emitLabelBox(p: LabelBox, ctx: CompileContext): void {
   // -- Text child (if any) -----------------------------------------------------
   let textId: string | null = null;
   if (p.text) {
-    const maxTextWidth = Math.max(width - padding * 2, 1);
-    const wrapped = wrapText({
-      text: p.text,
-      maxWidth: maxTextWidth,
-      fontSize,
-      fontFamily,
-    });
-    const wrappedMetrics = measureText({
-      text: wrapped,
-      fontSize,
-      fontFamily,
-      lineHeight,
-    });
+    // Reuse the pre-wrap computed above for the height fit-up decision so
+    // the text element and the container stay in lock-step.
+    const wrapped =
+      prewrappedText ??
+      wrapText({
+        text: p.text,
+        maxWidth: Math.max(width - padding * 2, 1),
+        fontSize,
+        fontFamily,
+      });
+    const wrappedMetrics =
+      prewrappedMetrics ??
+      measureText({
+        text: wrapped,
+        fontSize,
+        fontFamily,
+        lineHeight,
+      });
 
     // Size the text element to its measured glyph run (plus a single-pixel
     // safety margin so aliasing doesn't clip edges) and center it inside

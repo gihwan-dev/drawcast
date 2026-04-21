@@ -119,14 +119,43 @@ describe('emitLabelBox — container-bound text geometry (B1)', () => {
       (e): e is ExcalidrawTextElement => e.type === 'text',
     )!;
 
+    // Width stays pinned to the fit:'fixed' request; height can grow so
+    // the wrapped glyph run is contained (see emit/labelBox.ts comment).
     expect(shape.width).toBe(120);
-    expect(shape.height).toBe(80);
+    expect(shape.height).toBeGreaterThanOrEqual(80);
     // Text fits inside.
-    expect(text.width).toBeLessThanOrEqual(120);
-    expect(text.height).toBeLessThanOrEqual(80);
+    expect(text.width).toBeLessThanOrEqual(shape.width);
+    expect(text.height).toBeLessThanOrEqual(shape.height);
     // Centred (to within rounding).
     expect(text.x + text.width / 2).toBeCloseTo(shape.x + shape.width / 2, 1);
     expect(text.y + text.height / 2).toBeCloseTo(shape.y + shape.height / 2, 1);
+  });
+
+  it('expands fixed-height box so wrapped text does not overflow', () => {
+    // Regression: arch-cdn-03 eval showed "Main DB (Primary)\nPostgreSQL"
+    // wrapping into 3 lines inside a fit:'fixed' [200, 65] box, so the
+    // "PostgreSQL" line spilled below the shape onto a nearby edge label.
+    const p: LabelBox = {
+      kind: 'labelBox',
+      id: 'main_db' as PrimitiveId,
+      shape: 'rectangle',
+      at: [0, 0],
+      fit: 'fixed',
+      size: [200, 65],
+      text: 'Main DB (Primary)\nPostgreSQL',
+    };
+    const result = compile(makeScene([p]));
+    const shape = result.elements.find(
+      (e): e is ExcalidrawRectangleElement => e.type === 'rectangle',
+    )!;
+    const text = result.elements.find(
+      (e): e is ExcalidrawTextElement => e.type === 'text',
+    )!;
+    // The container must be tall enough that the wrapped text fits inside.
+    expect(shape.height).toBeGreaterThan(65);
+    expect(text.height).toBeLessThanOrEqual(shape.height);
+    // The text bottom stays within the shape bottom.
+    expect(text.y + text.height).toBeLessThanOrEqual(shape.y + shape.height + 1);
   });
 
   it('shape still registers the text in boundElements so Excalidraw pairs them', () => {
