@@ -27,6 +27,7 @@ import {
 import {
   subscribeChatEvents,
   subscribeChatExit,
+  subscribeChatRawLines,
 } from '../services/chat.js';
 import { saveUploads } from '../services/uploads.js';
 import { useChatStore, type Attachment } from '../store/chatStore.js';
@@ -41,7 +42,10 @@ export function ChatPanel(): JSX.Element {
   const lastError = useChatStore((s) => s.lastError);
 
   // Wire the event subscribers exactly once per mount. The store owns all
-  // state mutations; this component just relays.
+  // state mutations; this component just relays. `subscribeChatRawLines`
+  // is a no-op in production and logs to devtools in dev — attaching it
+  // here keeps unparseable stdout / stderr visible without polluting the
+  // main event pipeline.
   useEffect(() => {
     const offEvents = subscribeChatEvents((ev) => {
       useChatStore.getState().handleEvent(ev);
@@ -49,9 +53,11 @@ export function ChatPanel(): JSX.Element {
     const offExit = subscribeChatExit((payload) => {
       useChatStore.getState().handleExit(payload);
     });
+    const offRaw = subscribeChatRawLines();
     return () => {
       offEvents();
       offExit();
+      offRaw();
     };
   }, []);
 
