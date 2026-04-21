@@ -52,6 +52,22 @@ function edge(id: string, from: string, to: string): Connector {
   };
 }
 
+function labelledEdge(
+  id: string,
+  from: string,
+  to: string,
+  label?: string,
+): Connector {
+  const connector: Connector = {
+    kind: 'connector',
+    id: id as PrimitiveId,
+    from: from as PrimitiveId,
+    to: to as PrimitiveId,
+  };
+  if (label !== undefined) connector.label = label;
+  return connector;
+}
+
 describe('compileAsync', () => {
   it('falls back to compile() when useLayout is false', async () => {
     const scene = makeScene([box('a'), box('b'), edge('c', 'a', 'b')]);
@@ -292,5 +308,96 @@ describe('compileAsync', () => {
     const sync = compile(scene);
     const async = await compileAsync(scene, { useLayout: true });
     expect(async.elements.length).toBe(sync.elements.length);
+  });
+
+  // --- #ci-04 regression: ELK throws on certain cycle shapes --------------
+  //
+  // The flow-ci-04 eval (CI/CD pipeline: 9-step linear chain, 7 failure
+  // edges converging on a single `fix_repush` node, plus a retry back
+  // edge fix_repush → pr_created) reliably triggers elkjs's
+  // `java.util.NoSuchElementException` inside the layered algorithm.
+  // Before the compileAsync fallback, that crash propagated through
+  // draw_export and the runner reported `export_fetch_failed`,
+  // losing the diagram entirely. The fallback swallows the error,
+  // compiles the scene using the LLM's `at` hints verbatim, and
+  // surfaces the failure as a warning instead.
+  it('falls back to sync compile when ELK throws', async () => {
+    // Replay flow-ci-04's node sizes and shapes verbatim — the ELK bug is
+    // sensitive to both topology and bbox dimensions, so a generic helper
+    // does not reproduce it.
+    const ciBox = (
+      id: string,
+      at: readonly [number, number],
+      shape: LabelBox['shape'] = 'rectangle',
+      text: string = id,
+    ): LabelBox => ({
+      kind: 'labelBox',
+      id: id as PrimitiveId,
+      shape,
+      at,
+      fit: 'fixed',
+      size: shape === 'rectangle' ? [180, 65] : [160, 60],
+      text,
+    });
+    const primitives: Primitive[] = [
+      ciBox('pr_created', [500, 50], 'ellipse', 'PR 생성'),
+      ciBox('lint', [500, 190], 'rectangle', '린트'),
+      ciBox('typecheck', [500, 330], 'rectangle', '타입체크'),
+      ciBox('unittest', [500, 470], 'rectangle', '단위 테스트'),
+      ciBox('build', [500, 610], 'rectangle', '빌드'),
+      ciBox('integration', [500, 750], 'rectangle', '통합 테스트'),
+      ciBox('approval', [500, 890], 'diamond', '배포 승인'),
+      ciBox('staging', [500, 1030], 'rectangle', '스테이징 배포'),
+      ciBox('production', [500, 1170], 'rectangle', '프로덕션 배포'),
+      ciBox('merged', [500, 1310], 'ellipse', 'main 머지 완료'),
+      ciBox('fix_repush', [100, 700], 'rectangle', '수정 & 재푸시'),
+      ciBox('rollback', [900, 1170], 'rectangle', '롤백'),
+      // Linear forward chain — labels matter: ELK reserves edge-label
+      // space in the layered pass, and empty labels don't reproduce the
+      // crash.
+      labelledEdge('e_start', 'pr_created', 'lint'),
+      labelledEdge('e_lint_pass', 'lint', 'typecheck', '통과'),
+      labelledEdge('e_typecheck_pass', 'typecheck', 'unittest', '통과'),
+      labelledEdge('e_unittest_pass', 'unittest', 'build', '통과'),
+      labelledEdge('e_build_pass', 'build', 'integration', '통과'),
+      labelledEdge('e_integration_pass', 'integration', 'approval', '통과'),
+      labelledEdge('e_approval_pass', 'approval', 'staging', '승인'),
+      labelledEdge('e_staging_pass', 'staging', 'production', '통과'),
+      labelledEdge('e_production_pass', 'production', 'merged', '완료'),
+      // 7 failure edges all converging on fix_repush
+      labelledEdge('e_lint_fail', 'lint', 'fix_repush', '실패'),
+      labelledEdge('e_typecheck_fail', 'typecheck', 'fix_repush', '실패'),
+      labelledEdge('e_unittest_fail', 'unittest', 'fix_repush', '실패'),
+      labelledEdge('e_build_fail', 'build', 'fix_repush', '실패'),
+      labelledEdge('e_integration_fail', 'integration', 'fix_repush', '실패'),
+      labelledEdge('e_approval_reject', 'approval', 'fix_repush', '거절'),
+      labelledEdge('e_staging_fail', 'staging', 'fix_repush', '실패'),
+      // Back edge creating the cycle that trips the layered algorithm
+      labelledEdge('e_fix_retry', 'fix_repush', 'pr_created', '재시도'),
+      labelledEdge('e_production_fail', 'production', 'rollback', '실패'),
+    ];
+    const scene = makeScene(primitives);
+
+    const result = await compileAsync(scene, { useLayout: true });
+
+    // Scene was still compiled (not lost to the exception) …
+    expect(result.elements.length).toBeGreaterThan(0);
+    // … and the fallback surfaced itself as a warning so callers can log it.
+    expect(result.warnings.some((w) => w.code === 'LAYOUT_ENGINE_FAILED')).toBe(true);
+  });
+
+  it('swallows synthetic engine errors and falls back with a warning', async () => {
+    // Belt-and-braces: even if the crash above is fixed upstream, any
+    // future ELK error must still degrade to the sync path.
+    const scene = makeScene([box('a', [10, 10]), box('b', [200, 10]), edge('c', 'a', 'b')]);
+    const brokenEngine = {
+      layout: async () => {
+        throw new Error('boom');
+      },
+    };
+    const result = await compileAsync(scene, { useLayout: true, engine: brokenEngine });
+    expect(result.elements.length).toBeGreaterThan(0);
+    const warning = result.warnings.find((w) => w.code === 'LAYOUT_ENGINE_FAILED');
+    expect(warning?.message).toContain('boom');
   });
 });
