@@ -15,7 +15,7 @@
 import type { Connector, Point, PrimitiveId, Radians } from '../primitives.js';
 import { baseElementFields } from '../utils/baseElementFields.js';
 import { newElementId } from '../utils/id.js';
-import { getLineHeight, measureText } from '../measure.js';
+import { containsCjk, getLineHeight, measureText } from '../measure.js';
 import type {
   ExcalidrawArrowElement,
   ExcalidrawTextElement,
@@ -921,6 +921,20 @@ export function emitConnector(
     const fontSize = style.fontSize ?? ctx.theme.defaultFontSize;
     const lineHeight = getLineHeight(fontFamily);
     const metrics = measureText({ text: p.label, fontSize, fontFamily });
+    // Widen the bound-label bbox for CJK text. Our static `measureText`
+    // lands on exactly the runtime pixel width for Latin glyphs, but the
+    // default Excalidraw fonts (Excalifont / Virgil / Cascadia) ship no
+    // Hangul / Kana glyphs — the renderer falls back to the platform
+    // font, which measures slightly wider per glyph. A tight bbox makes
+    // `refreshTextDimensions` wrap a 3-char Korean label into three
+    // single-character lines that then render as a vertical stack
+    // (flow-login-01 "재시도" case). An `fontSize * 0.3` safety margin
+    // covers the measured fallback overshoot without noticeably shifting
+    // the label's visual centre.
+    const cjkWidthBuffer = containsCjk(p.label)
+      ? Math.ceil(fontSize * 0.3)
+      : 0;
+    const labelWidth = metrics.width + cjkWidthBuffer;
     // Anchor on the polyline, not the straight line between endpoints.
     // For orthogonally routed feedback edges (ELK `routedPath`, or the
     // built-in elbow router) the straight-line midpoint can fall far off
@@ -967,7 +981,7 @@ export function emitConnector(
     [midX, midY] = nudgeLabelAwayFromNodes(
       midX,
       midY,
-      metrics.width,
+      labelWidth,
       metrics.height,
       tangentAtLabelAnchor(rawPoints),
       labelExclude,
@@ -976,9 +990,9 @@ export function emitConnector(
 
     const labelBase = baseElementFields({
       id: labelId,
-      x: midX - metrics.width / 2,
+      x: midX - labelWidth / 2,
       y: midY - metrics.height / 2,
-      width: metrics.width,
+      width: labelWidth,
       height: metrics.height,
       angle: 0 as Radians,
       // Edge labels always render in a high-contrast dark color, not the

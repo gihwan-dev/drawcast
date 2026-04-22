@@ -918,4 +918,63 @@ describe('emitConnector — straight-line obstacle detour (arch-cdn-03)', () => 
     const overlaps = lx1 < nx2 && lx2 > nx1 && ly1 < ny2 && ly2 > ny1;
     expect(overlaps).toBe(false);
   });
+
+  it('CJK bound label bbox carries a width buffer so Excalidraw does not wrap it', () => {
+    // flow-login-01 "재시도": the default Excalidraw fonts ship no Hangul
+    // glyphs, so Excalidraw's runtime `refreshTextDimensions` measures
+    // the label slightly wider than our static `measureText` estimate.
+    // With a flush bbox the runtime wraps the 3-char label into three
+    // single-character lines that render as a vertically-stacked column.
+    // The emitter must pad the CJK label bbox so the runtime never
+    // wraps. Latin labels of matching codepoint count stay flush because
+    // their glyphs render in the authored Excalidraw font.
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 100],
+      fit: 'fixed',
+      size: [120, 40],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 300],
+      fit: 'fixed',
+      size: [120, 40],
+      text: 'B',
+    };
+    const korean: Connector = {
+      kind: 'connector',
+      id: 'c-kor' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: 'b' as PrimitiveId,
+      label: '재시도',
+    };
+    const latin: Connector = {
+      kind: 'connector',
+      id: 'c-lat' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: 'b' as PrimitiveId,
+      label: 'RET',
+    };
+    const korResult = compile(makeScene([a, b, korean]));
+    const latResult = compile(makeScene([a, b, latin]));
+    const korLabel = korResult.elements.find(
+      (el) => el.type === 'text' && (el as { text?: string }).text === '재시도',
+    ) as { width: number } | undefined;
+    const latLabel = latResult.elements.find(
+      (el) => el.type === 'text' && (el as { text?: string }).text === 'RET',
+    ) as { width: number } | undefined;
+    expect(korLabel).toBeDefined();
+    expect(latLabel).toBeDefined();
+    // "재시도" measures as 3 CJK chars × 2 visual units × 0.55 × 20 = 66px.
+    // The CJK padding must round up to at least 6px so the bbox clears the
+    // runtime overshoot; anything smaller risks the single-character wrap.
+    expect(korLabel!.width).toBeGreaterThanOrEqual(66 + 6);
+    // Latin labels stay tight against `measureText` (no fallback overshoot).
+    expect(latLabel!.width).toBeLessThan(66);
+  });
 });

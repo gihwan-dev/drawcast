@@ -42,6 +42,21 @@ function isCjkCodePoint(cp: number): boolean {
 }
 
 /**
+ * Does `text` contain any CJK / fullwidth codepoint? Callers use this to
+ * apply a wider bbox buffer when Excalidraw's runtime font fallback (the
+ * default Excalifont / Virgil / Cascadia families ship no Hangul / Kana
+ * glyphs, so the renderer falls back to the platform font) measures wider
+ * than our static `avgCharWidth` estimate.
+ */
+export function containsCjk(text: string): boolean {
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (isCjkCodePoint(cp)) return true;
+  }
+  return false;
+}
+
+/**
  * Compute visual width units for a line: CJK/fullwidth counts as 2,
  * everything else as 1. Iteration is codepoint-aware so surrogate pairs
  * don't double-count.
