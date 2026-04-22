@@ -25,6 +25,13 @@ const MIN_LAYOUT_WIDTH = 80;
 const MIN_LAYOUT_HEIGHT = 40;
 const FIXED_FALLBACK_WIDTH = 150;
 const FIXED_FALLBACK_HEIGHT = 60;
+// A LabelBox whose narrower side is ≤ this threshold is a "rail" shape
+// (sequence-diagram lifeline, swimlane divider) rather than a content
+// node. See `hasRailShapedLabelBox` for why these short-circuit the
+// graph build. Content nodes are ≥ MIN_LAYOUT_HEIGHT (40) in practice,
+// and seq-oauth-01 lifelines are 4px wide — a 10px threshold leaves a
+// wide safety margin on both sides.
+const RAIL_MIN_SIDE_THRESHOLD = 10;
 // Ellipse/diamond bounding boxes must be larger than their inscribed
 // rectangle, otherwise the emit layer's `maxTextWidth = width - 2*padding`
 // clamps wrap to fewer lines than ELK reserved vertical space for and
@@ -49,6 +56,21 @@ export function buildGraphModel(
   const primitives = [...scene.primitives.values()];
 
   if (skipIfFrame && primitives.some((p) => p.kind === 'frame')) {
+    return null;
+  }
+
+  // A rail-shaped LabelBox (sequence-diagram lifeline, swimlane divider)
+  // signals the scene is hand-laid-out along an axis that ELK's layered
+  // algorithm does not model. Passing it through anyway makes layered
+  // treat the rail as an ordinary node and rebuild columns around it:
+  // seq-oauth-01 baseline placed four participant headers at y=0 with
+  // 1220-tall lifelines at y=70, and ELK promoted the lifelines to their
+  // own layers and stacked every header at y≈592 (the lifeline midline),
+  // leaving messages dangling above and below the participant row.
+  // Fall back to the sync compile path so the declared `at` coordinates
+  // survive — this matches the existing "Frame present → skip ELK"
+  // escape hatch for the same reason (out-of-scope compound layout).
+  if (primitives.some(hasRailShapedLabelBox)) {
     return null;
   }
 
@@ -77,6 +99,13 @@ export function buildGraphModel(
     children: nodes,
     edges,
   };
+}
+
+function hasRailShapedLabelBox(primitive: Primitive): boolean {
+  if (primitive.kind !== 'labelBox') return false;
+  if (primitive.size === undefined) return false;
+  const [width, height] = primitive.size;
+  return Math.min(width, height) <= RAIL_MIN_SIDE_THRESHOLD;
 }
 
 function labelBoxToNode(

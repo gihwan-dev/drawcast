@@ -131,6 +131,45 @@ describe('compileAsync', () => {
     expect(firstCoords).toEqual(secondCoords);
   });
 
+  // Regression guard for seq-oauth-01 eval: when the LLM emits a
+  // sequence diagram with narrow lifeline LabelBoxes, the scene is
+  // hand-laid-out and ELK must not touch it. Without this skip the
+  // layered algorithm treated lifelines as ordinary nodes and stacked
+  // the participant headers at the lifeline midline, destroying the
+  // actors-on-top structure.
+  it('skips layout when the scene contains a rail-shaped lifeline LabelBox', async () => {
+    const header: LabelBox = {
+      kind: 'labelBox',
+      id: 'actor_hdr' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [140, 60],
+      at: [50, 0],
+      text: '사용자',
+    };
+    const lifeline: LabelBox = {
+      kind: 'labelBox',
+      id: 'actor_life' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [4, 1220],
+      at: [118, 70],
+      text: '',
+    };
+    const scene = makeScene([header, lifeline]);
+    const sync = compile(scene);
+    const async = await compileAsync(scene, { useLayout: true });
+    const syncRectXs = sync.elements
+      .filter((el): el is ExcalidrawRectangleElement => el.type === 'rectangle')
+      .map((el) => el.x)
+      .sort((a, b) => a - b);
+    const asyncRectXs = async.elements
+      .filter((el): el is ExcalidrawRectangleElement => el.type === 'rectangle')
+      .map((el) => el.x)
+      .sort((a, b) => a - b);
+    expect(asyncRectXs).toEqual(syncRectXs);
+  });
+
   it('skips layout when the scene contains a frame (Phase 2 scope)', async () => {
     const frame: Frame = {
       kind: 'frame',

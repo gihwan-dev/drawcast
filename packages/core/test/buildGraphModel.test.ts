@@ -203,4 +203,56 @@ describe('buildGraphModel — labelBox size measurement', () => {
     expect(n.fixedPosition!.x).toBe(500 - n.width! / 2);
     expect(n.fixedPosition!.y).toBe(300 - n.height! / 2);
   });
+
+  // Regression guard for seq-oauth-01 eval: Claude emitted a sequence
+  // diagram with 4 participant headers and 4 tall/thin lifeline boxes
+  // (size [4, 1220]). ELK's layered algorithm then promoted those
+  // lifelines to their own columns and stacked the participant headers
+  // at the lifelines' vertical midpoint, destroying the "actors on top
+  // / messages below" structure. Rail-shaped LabelBoxes now short-
+  // circuit graph building so the sync compile path preserves `at`.
+  it('returns null when the scene contains a rail-shaped LabelBox (lifeline / divider)', () => {
+    const header: LabelBox = {
+      kind: 'labelBox',
+      id: 'user_hdr' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [140, 60],
+      at: [50, 0],
+      text: '사용자',
+    };
+    const lifeline: LabelBox = {
+      kind: 'labelBox',
+      id: 'user_life' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [4, 1220],
+      at: [118, 70],
+      text: '',
+    };
+    const graph = buildGraphModel(makeScene([header, lifeline]));
+    expect(graph).toBeNull();
+  });
+
+  it('keeps normal-shape scenes in scope (no rail → non-null graph)', () => {
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [140, 60],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [140, 60],
+      text: 'B',
+    };
+    const graph = buildGraphModel(makeScene([a, b]));
+    expect(graph).not.toBeNull();
+    expect(graph!.children).toHaveLength(2);
+  });
 });
