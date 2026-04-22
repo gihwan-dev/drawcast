@@ -14,3 +14,4 @@ src-tauri/binaries/drawcast-mcp-*
 pnpm-debug.log*
 .claude/
 evals/results/
+evals/automation-runs/
