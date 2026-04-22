@@ -1,3 +1,4 @@
 {"run_id":"20260422-050211-8678","question_id":"seq-oauth-01","category":"sequence","difficulty":"medium","status":"fixed","ts":"2026-04-22T05:21:00Z"}
 {"run_id":"20260422-150142-3805","question_id":"state-order-01","category":"state","difficulty":"easy","status":"pass","ts":"2026-04-22T06:04:20Z"}
 {"run_id":"20260422-070216-9ffe","question_id":"mind-react-01","category":"mind","difficulty":"medium","status":"pass","ts":"2026-04-22T07:07:27Z"}
+{"run_id":"20260422-072500-arch4","question_id":"arch-mlops-04","category":"architecture","difficulty":"hard","status":"pass","ts":"2026-04-22T08:05:00Z"}
