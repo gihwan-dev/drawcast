@@ -8,12 +8,26 @@
       "difficulty": "easy",
       "prompt": "사용자 로그인 과정을 플로우차트로 그려줘. 이메일/비밀번호 입력, 검증, 성공/실패 분기를 포함할 것.",
       "expected": {
-        "node_count": { "min": 5, "max": 9 },
-        "edge_count": { "min": 4, "max": 10 },
-        "required_concepts": ["로그인", "검증", "성공", "실패"],
+        "node_count": {
+          "min": 5,
+          "max": 9
+        },
+        "edge_count": {
+          "min": 4,
+          "max": 10
+        },
+        "required_concepts": [
+          "로그인",
+          "검증",
+          "성공",
+          "실패"
+        ],
         "must_have_branch": true
       },
-      "rubric_weights": { "structure": 1.2, "intent_fit": 1.2 },
+      "rubric_weights": {
+        "structure": 1.2,
+        "intent_fit": 1.2
+      },
       "notes": "성공/실패 두 분기가 명확히 보여야 함"
     },
     {
@@ -22,9 +36,21 @@
       "difficulty": "medium",
       "prompt": "회원가입 + 이메일 인증 플로우를 그려줘. 약관 동의, 이메일 중복 체크, 인증 메일 발송, 링크 클릭, 계정 활성화까지 포함.",
       "expected": {
-        "node_count": { "min": 8, "max": 14 },
-        "edge_count": { "min": 7, "max": 15 },
-        "required_concepts": ["약관", "중복", "이메일", "인증", "활성화"],
+        "node_count": {
+          "min": 8,
+          "max": 14
+        },
+        "edge_count": {
+          "min": 7,
+          "max": 15
+        },
+        "required_concepts": [
+          "약관",
+          "중복",
+          "이메일",
+          "인증",
+          "활성화"
+        ],
         "must_have_branch": true
       }
     },
@@ -34,9 +60,21 @@
       "difficulty": "medium",
       "prompt": "이커머스 주문 처리 플로우: 장바구니 → 주문 생성 → 결제 → 결제 성공/실패 → 재고 차감 → 배송 시작.",
       "expected": {
-        "node_count": { "min": 8, "max": 14 },
-        "edge_count": { "min": 7, "max": 15 },
-        "required_concepts": ["장바구니", "주문", "결제", "재고", "배송"],
+        "node_count": {
+          "min": 8,
+          "max": 14
+        },
+        "edge_count": {
+          "min": 7,
+          "max": 15
+        },
+        "required_concepts": [
+          "장바구니",
+          "주문",
+          "결제",
+          "재고",
+          "배송"
+        ],
         "must_have_branch": true
       }
     },
@@ -46,9 +84,24 @@
       "difficulty": "hard",
       "prompt": "GitHub PR이 만들어진 후부터 main에 머지될 때까지의 CI/CD 파이프라인을 그려줘. 린트, 타입체크, 단위 테스트, 빌드, 통합 테스트, 배포 승인, 스테이징 배포, 프로덕션 배포까지 순서대로. 실패 시 어디로 가는지도.",
       "expected": {
-        "node_count": { "min": 10, "max": 18 },
-        "edge_count": { "min": 10, "max": 22 },
-        "required_concepts": ["PR", "린트", "타입", "테스트", "빌드", "스테이징", "프로덕션", "승인"],
+        "node_count": {
+          "min": 10,
+          "max": 18
+        },
+        "edge_count": {
+          "min": 10,
+          "max": 22
+        },
+        "required_concepts": [
+          "PR",
+          "린트",
+          "타입",
+          "테스트",
+          "빌드",
+          "스테이징",
+          "프로덕션",
+          "승인"
+        ],
         "must_have_branch": true
       }
     },
@@ -58,9 +111,21 @@
       "difficulty": "easy",
       "prompt": "API 호출에 지수 백오프 재시도를 적용한 플로우차트. 실패 시 대기 후 재시도, 최대 N회까지.",
       "expected": {
-        "node_count": { "min": 4, "max": 8 },
-        "edge_count": { "min": 4, "max": 9 },
-        "required_concepts": ["호출", "실패", "대기", "재시도", "최대"],
+        "node_count": {
+          "min": 4,
+          "max": 8
+        },
+        "edge_count": {
+          "min": 4,
+          "max": 9
+        },
+        "required_concepts": [
+          "호출",
+          "실패",
+          "대기",
+          "재시도",
+          "최대"
+        ],
         "must_have_branch": true,
         "must_have_loop": true
       }
@@ -71,9 +136,19 @@
       "difficulty": "easy",
       "prompt": "전형적인 3계층 웹 아키텍처를 그려줘. 프론트엔드(브라우저) - 백엔드(API 서버) - 데이터베이스.",
       "expected": {
-        "node_count": { "min": 3, "max": 6 },
-        "edge_count": { "min": 2, "max": 6 },
-        "required_concepts": ["프론트", "백엔드", "데이터베이스"]
+        "node_count": {
+          "min": 3,
+          "max": 6
+        },
+        "edge_count": {
+          "min": 2,
+          "max": 6
+        },
+        "required_concepts": [
+          "프론트",
+          "백엔드",
+          "데이터베이스"
+        ]
       }
     },
     {
@@ -82,9 +157,21 @@
       "difficulty": "medium",
       "prompt": "이커머스 마이크로서비스 아키텍처: API 게이트웨이, 주문·결제·재고 서비스, 각자 전용 DB, 서비스 간 비동기 통신은 Kafka.",
       "expected": {
-        "node_count": { "min": 8, "max": 14 },
-        "edge_count": { "min": 7, "max": 16 },
-        "required_concepts": ["게이트웨이", "주문", "결제", "재고", "Kafka"]
+        "node_count": {
+          "min": 8,
+          "max": 14
+        },
+        "edge_count": {
+          "min": 7,
+          "max": 16
+        },
+        "required_concepts": [
+          "게이트웨이",
+          "주문",
+          "결제",
+          "재고",
+          "Kafka"
+        ]
       }
     },
     {
@@ -93,9 +180,21 @@
       "difficulty": "medium",
       "prompt": "글로벌 웹서비스 아키텍처. CDN, 로드밸런서, 여러 리전의 웹서버, 리전별 캐시(Redis), 메인 DB + 읽기 전용 복제본.",
       "expected": {
-        "node_count": { "min": 8, "max": 14 },
-        "edge_count": { "min": 7, "max": 16 },
-        "required_concepts": ["CDN", "로드밸런서", "캐시", "Redis", "복제"]
+        "node_count": {
+          "min": 8,
+          "max": 14
+        },
+        "edge_count": {
+          "min": 7,
+          "max": 16
+        },
+        "required_concepts": [
+          "CDN",
+          "로드밸런서",
+          "캐시",
+          "Redis",
+          "복제"
+        ]
       }
     },
     {
@@ -104,9 +203,23 @@
       "difficulty": "hard",
       "prompt": "ML 모델의 학습·배포 파이프라인을 아키텍처로. 데이터 수집 → Feature Store → 학습(offline) → 모델 레지스트리 → 서빙(online) → 모니터링 → 재학습 트리거.",
       "expected": {
-        "node_count": { "min": 10, "max": 16 },
-        "edge_count": { "min": 9, "max": 18 },
-        "required_concepts": ["데이터", "Feature", "학습", "레지스트리", "서빙", "모니터링", "재학습"],
+        "node_count": {
+          "min": 10,
+          "max": 16
+        },
+        "edge_count": {
+          "min": 9,
+          "max": 18
+        },
+        "required_concepts": [
+          "데이터",
+          "Feature",
+          "학습",
+          "레지스트리",
+          "서빙",
+          "모니터링",
+          "재학습"
+        ],
         "must_have_loop": true
       }
     },
@@ -116,9 +229,22 @@
       "difficulty": "medium",
       "prompt": "OAuth 2.0 Authorization Code Flow를 시퀀스 다이어그램으로. 참여자: 사용자, 클라이언트 앱, Authorization Server, Resource Server.",
       "expected": {
-        "node_count": { "min": 4, "max": 6 },
-        "edge_count": { "min": 6, "max": 12 },
-        "required_concepts": ["사용자", "클라이언트", "Authorization", "Resource", "code", "token"]
+        "node_count": {
+          "min": 4,
+          "max": 6
+        },
+        "edge_count": {
+          "min": 6,
+          "max": 12
+        },
+        "required_concepts": [
+          "사용자",
+          "클라이언트",
+          "Authorization",
+          "Resource",
+          "code",
+          "token"
+        ]
       },
       "notes": "세로 액터 + 가로 화살표 패턴이 이상적. 순서 번호가 있으면 가점 없음(rubric은 구조만)."
     },
@@ -128,9 +254,20 @@
       "difficulty": "easy",
       "prompt": "클라이언트-서버 WebSocket 핸드셰이크와 메시지 주고받기를 시퀀스로. HTTP Upgrade → 101 응답 → 양방향 메시지 → close.",
       "expected": {
-        "node_count": { "min": 2, "max": 4 },
-        "edge_count": { "min": 4, "max": 8 },
-        "required_concepts": ["Upgrade", "101", "메시지", "close"]
+        "node_count": {
+          "min": 2,
+          "max": 4
+        },
+        "edge_count": {
+          "min": 4,
+          "max": 8
+        },
+        "required_concepts": [
+          "Upgrade",
+          "101",
+          "메시지",
+          "close"
+        ]
       }
     },
     {
@@ -139,9 +276,21 @@
       "difficulty": "hard",
       "prompt": "주문 처리 Saga 패턴 시퀀스. 주문·결제·재고·배송 서비스 참여, 결제 실패 시 앞 단계들을 보상 트랜잭션으로 되돌리는 흐름까지.",
       "expected": {
-        "node_count": { "min": 4, "max": 6 },
-        "edge_count": { "min": 8, "max": 16 },
-        "required_concepts": ["주문", "결제", "재고", "배송", "보상"],
+        "node_count": {
+          "min": 4,
+          "max": 6
+        },
+        "edge_count": {
+          "min": 8,
+          "max": 16
+        },
+        "required_concepts": [
+          "주문",
+          "결제",
+          "재고",
+          "배송",
+          "보상"
+        ],
         "must_have_branch": true
       }
     },
@@ -151,9 +300,20 @@
       "difficulty": "easy",
       "prompt": "블로그의 ER 다이어그램. User, Post, Comment, Tag 엔티티와 관계(1:N, N:M 포함). 주요 속성과 PK/FK.",
       "expected": {
-        "node_count": { "min": 4, "max": 6 },
-        "edge_count": { "min": 3, "max": 7 },
-        "required_concepts": ["User", "Post", "Comment", "Tag"]
+        "node_count": {
+          "min": 4,
+          "max": 6
+        },
+        "edge_count": {
+          "min": 3,
+          "max": 7
+        },
+        "required_concepts": [
+          "User",
+          "Post",
+          "Comment",
+          "Tag"
+        ]
       }
     },
     {
@@ -162,9 +322,21 @@
       "difficulty": "medium",
       "prompt": "이커머스 ER 다이어그램. User, Product, Order, OrderItem, Payment. 주문 1개에 아이템 여러 개, 결제는 주문당 1개.",
       "expected": {
-        "node_count": { "min": 5, "max": 7 },
-        "edge_count": { "min": 4, "max": 8 },
-        "required_concepts": ["User", "Product", "Order", "OrderItem", "Payment"]
+        "node_count": {
+          "min": 5,
+          "max": 7
+        },
+        "edge_count": {
+          "min": 4,
+          "max": 8
+        },
+        "required_concepts": [
+          "User",
+          "Product",
+          "Order",
+          "OrderItem",
+          "Payment"
+        ]
       }
     },
     {
@@ -173,9 +345,21 @@
       "difficulty": "easy",
       "prompt": "전자상거래 주문의 상태 머신. 상태: PENDING, PAID, SHIPPED, DELIVERED, CANCELED. 전이 이벤트를 레이블로.",
       "expected": {
-        "node_count": { "min": 5, "max": 7 },
-        "edge_count": { "min": 5, "max": 10 },
-        "required_concepts": ["PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELED"],
+        "node_count": {
+          "min": 5,
+          "max": 7
+        },
+        "edge_count": {
+          "min": 5,
+          "max": 10
+        },
+        "required_concepts": [
+          "PENDING",
+          "PAID",
+          "SHIPPED",
+          "DELIVERED",
+          "CANCELED"
+        ],
         "must_have_branch": true
       }
     },
@@ -185,9 +369,21 @@
       "difficulty": "medium",
       "prompt": "TCP 연결 상태 머신. CLOSED, LISTEN, SYN_SENT, SYN_RECEIVED, ESTABLISHED, FIN_WAIT_1/2, CLOSE_WAIT, LAST_ACK, TIME_WAIT, CLOSING 간 전이.",
       "expected": {
-        "node_count": { "min": 9, "max": 12 },
-        "edge_count": { "min": 10, "max": 18 },
-        "required_concepts": ["CLOSED", "LISTEN", "ESTABLISHED", "FIN_WAIT", "TIME_WAIT"]
+        "node_count": {
+          "min": 9,
+          "max": 12
+        },
+        "edge_count": {
+          "min": 10,
+          "max": 18
+        },
+        "required_concepts": [
+          "CLOSED",
+          "LISTEN",
+          "ESTABLISHED",
+          "FIN_WAIT",
+          "TIME_WAIT"
+        ]
       }
     },
     {
@@ -196,9 +392,22 @@
       "difficulty": "medium",
       "prompt": "React 렌더링 성능 최적화 기법을 마인드맵으로. 중심: '렌더 최적화'. 가지: 메모이제이션(memo/useMemo/useCallback), 코드 스플리팅, 가상화, 상태 분리, Suspense.",
       "expected": {
-        "node_count": { "min": 10, "max": 18 },
-        "edge_count": { "min": 9, "max": 18 },
-        "required_concepts": ["memo", "코드", "스플리팅", "가상화", "상태", "Suspense"]
+        "node_count": {
+          "min": 10,
+          "max": 18
+        },
+        "edge_count": {
+          "min": 9,
+          "max": 18
+        },
+        "required_concepts": [
+          "memo",
+          "코드",
+          "스플리팅",
+          "가상화",
+          "상태",
+          "Suspense"
+        ]
       }
     },
     {
@@ -207,9 +416,23 @@
       "difficulty": "easy",
       "prompt": "50명 규모 스타트업 조직도. CEO 아래 CTO / CPO / CFO. CTO 밑에 Backend / Frontend / Infra 팀, CPO 밑에 Product / Design 팀.",
       "expected": {
-        "node_count": { "min": 9, "max": 13 },
-        "edge_count": { "min": 8, "max": 12 },
-        "required_concepts": ["CEO", "CTO", "CPO", "Backend", "Frontend", "Product", "Design"]
+        "node_count": {
+          "min": 9,
+          "max": 13
+        },
+        "edge_count": {
+          "min": 8,
+          "max": 12
+        },
+        "required_concepts": [
+          "CEO",
+          "CTO",
+          "CPO",
+          "Backend",
+          "Frontend",
+          "Product",
+          "Design"
+        ]
       }
     },
     {
@@ -218,9 +441,20 @@
       "difficulty": "medium",
       "prompt": "가정용 네트워크 토폴로지. ISP 모뎀, 공유기, 유선 연결된 PC·NAS, Wi-Fi로 연결된 노트북·스마트폰·IoT 기기 몇 개.",
       "expected": {
-        "node_count": { "min": 7, "max": 12 },
-        "edge_count": { "min": 6, "max": 12 },
-        "required_concepts": ["ISP", "공유기", "PC", "Wi-Fi"]
+        "node_count": {
+          "min": 7,
+          "max": 12
+        },
+        "edge_count": {
+          "min": 6,
+          "max": 12
+        },
+        "required_concepts": [
+          "ISP",
+          "공유기",
+          "PC",
+          "Wi-Fi"
+        ]
       }
     },
     {
@@ -229,10 +463,230 @@
       "difficulty": "hard",
       "prompt": "AWS VPC 구성도. VPC 안에 Public Subnet과 Private Subnet. Public에 ALB와 NAT Gateway, Private에 EC2 Auto Scaling 그룹과 RDS. 인터넷 게이트웨이, 라우트 테이블까지 표시.",
       "expected": {
-        "node_count": { "min": 8, "max": 14 },
-        "edge_count": { "min": 7, "max": 14 },
-        "required_concepts": ["VPC", "Public", "Private", "ALB", "NAT", "EC2", "RDS", "Internet Gateway"]
+        "node_count": {
+          "min": 8,
+          "max": 14
+        },
+        "edge_count": {
+          "min": 7,
+          "max": 14
+        },
+        "required_concepts": [
+          "VPC",
+          "Public",
+          "Private",
+          "ALB",
+          "NAT",
+          "EC2",
+          "RDS",
+          "Internet Gateway"
+        ]
       }
+    },
+    {
+      "id": "flow-concurrent-06",
+      "category": "flowchart",
+      "difficulty": "hard",
+      "prompt": "두 개의 독립적인 API 호출을 병렬로 실행하고, 둘 다 성공해야 다음 단계로 넘어가는 플로우를 그려줘. 하나라도 실패하면 전체를 롤백하고 에러 처리.",
+      "expected": {
+        "node_count": {
+          "min": 8,
+          "max": 14
+        },
+        "edge_count": {
+          "min": 8,
+          "max": 16
+        },
+        "required_concepts": [
+          "병렬",
+          "성공",
+          "실패",
+          "롤백",
+          "에러"
+        ],
+        "must_have_branch": true
+      },
+      "rubric_weights": {
+        "structure": 1.5,
+        "intent_fit": 1.5
+      },
+      "notes": "병렬 분기(fork/join) 패턴이 명확히 표현되어야 함. 순차 플로우로 그리면 intent_fit 2 이하"
+    },
+    {
+      "id": "seq-payment-04",
+      "category": "sequence",
+      "difficulty": "hard",
+      "prompt": "PG사 결제 시퀀스: 사용자, 쇼핑몰 서버, PG사 서버, 카드사 서버 4개 참여자. 결제 요청 → PG사 토큰 발급 → 카드사 승인 → 승인 결과 전파 → 영수증 발급. 카드사 타임아웃 시 재시도 1회 후 실패 처리까지.",
+      "expected": {
+        "node_count": {
+          "min": 4,
+          "max": 5
+        },
+        "edge_count": {
+          "min": 10,
+          "max": 20
+        },
+        "required_concepts": [
+          "사용자",
+          "PG",
+          "카드사",
+          "토큰",
+          "승인",
+          "타임아웃",
+          "재시도"
+        ],
+        "must_have_branch": true
+      },
+      "rubric_weights": {
+        "labels": 1.5,
+        "intent_fit": 1.3
+      },
+      "notes": "엣지 레이블(메시지 이름)이 핵심. 참여자만 있고 메시지 레이블이 없으면 labels 2 이하"
+    },
+    {
+      "id": "flow-court-07",
+      "category": "flowchart",
+      "difficulty": "medium",
+      "prompt": "민사소송 1심 절차 플로우. 소장 접수 → 피고 송달 → 답변서 제출 → 변론기일 지정 → 변론(여러 차례 가능) → 판결 선고 → 항소 여부 분기.",
+      "expected": {
+        "node_count": {
+          "min": 7,
+          "max": 12
+        },
+        "edge_count": {
+          "min": 6,
+          "max": 14
+        },
+        "required_concepts": [
+          "소장",
+          "송달",
+          "답변",
+          "변론",
+          "판결",
+          "항소"
+        ],
+        "must_have_branch": true,
+        "must_have_loop": true
+      },
+      "rubric_weights": {
+        "labels": 1.4,
+        "structure": 1.2
+      },
+      "notes": "IT 외 도메인. 법원 용어를 정확히 레이블로 써야 함. 변론 반복(루프)이 표현되어야 함"
+    },
+    {
+      "id": "arch-eventdriven-05",
+      "category": "architecture",
+      "difficulty": "hard",
+      "prompt": "이벤트 소싱 + CQRS 아키텍처. Command side: API → Command Handler → Event Store. Query side: Event Store → Projector → Read Model DB → Query API. 이벤트 브로커(Kafka)로 두 side 연결.",
+      "expected": {
+        "node_count": {
+          "min": 9,
+          "max": 15
+        },
+        "edge_count": {
+          "min": 8,
+          "max": 16
+        },
+        "required_concepts": [
+          "Command",
+          "Event Store",
+          "Projector",
+          "Read Model",
+          "Kafka",
+          "Query"
+        ]
+      },
+      "rubric_weights": {
+        "structure": 1.4,
+        "intent_fit": 1.4
+      },
+      "notes": "Command/Query 두 side가 시각적으로 구분되어야 함. 하나의 흐름으로 그리면 intent_fit 2 이하"
+    },
+    {
+      "id": "erd-hospital-03",
+      "category": "erd",
+      "difficulty": "hard",
+      "prompt": "병원 예약 시스템 ER 다이어그램. Patient, Doctor, Department, Appointment, MedicalRecord 엔티티. Doctor는 여러 Department에 속할 수 있고, Appointment는 Patient와 Doctor를 연결, MedicalRecord는 Appointment당 0~1개. 각 엔티티의 핵심 속성(PK 포함) 명시.",
+      "expected": {
+        "node_count": {
+          "min": 5,
+          "max": 7
+        },
+        "edge_count": {
+          "min": 5,
+          "max": 9
+        },
+        "required_concepts": [
+          "Patient",
+          "Doctor",
+          "Department",
+          "Appointment",
+          "MedicalRecord"
+        ]
+      },
+      "rubric_weights": {
+        "labels": 1.5,
+        "structure": 1.3
+      },
+      "notes": "속성(PK/FK 포함)이 ERD 노드 안에 표기되어야 함. 엔티티 이름만 있으면 labels 2 이하"
+    },
+    {
+      "id": "state-elevator-03",
+      "category": "state",
+      "difficulty": "medium",
+      "prompt": "엘리베이터 상태 머신. 상태: IDLE(문 닫힘), DOOR_OPEN, MOVING_UP, MOVING_DOWN, EMERGENCY_STOP. 버튼 입력, 층 도착, 비상 버튼, 타임아웃 이벤트를 전이 레이블로 표시.",
+      "expected": {
+        "node_count": {
+          "min": 5,
+          "max": 6
+        },
+        "edge_count": {
+          "min": 7,
+          "max": 14
+        },
+        "required_concepts": [
+          "IDLE",
+          "DOOR_OPEN",
+          "MOVING",
+          "EMERGENCY",
+          "타임아웃"
+        ],
+        "must_have_branch": true
+      },
+      "rubric_weights": {
+        "labels": 1.6
+      },
+      "notes": "전이 레이블(이벤트명)이 없으면 이 다이어그램의 핵심이 사라짐. 엣지 레이블 없으면 labels 1 이하"
+    },
+    {
+      "id": "seq-llm-05",
+      "category": "sequence",
+      "difficulty": "hard",
+      "prompt": "LLM 기반 RAG 파이프라인 시퀀스. 참여자: 사용자, API 서버, 임베딩 서비스, 벡터 DB, LLM. 질문 입력 → 임베딩 → 유사 문서 검색(top-k) → 컨텍스트 조합 → LLM 호출(스트리밍) → 청크 단위 응답 전달.",
+      "expected": {
+        "node_count": {
+          "min": 5,
+          "max": 6
+        },
+        "edge_count": {
+          "min": 8,
+          "max": 16
+        },
+        "required_concepts": [
+          "사용자",
+          "임베딩",
+          "벡터",
+          "LLM",
+          "검색",
+          "스트리밍"
+        ]
+      },
+      "rubric_weights": {
+        "intent_fit": 1.5,
+        "labels": 1.3
+      },
+      "notes": "스트리밍 응답 패턴(반복 화살표 or 루프 표기)이 표현되어야 함"
     }
   ]
 }
