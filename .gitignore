@@ -14,3 +14,7 @@ src-tauri/binaries/drawcast-mcp-*
 pnpm-debug.log*
 .claude/
 evals/results/
+# Per-loop scratch notes are throwaway, but _history.jsonl at the root
+# of automation-runs/ must be tracked so each new run can read prior
+# selections and apply the diversity rules in the loop prompt.
+evals/automation-runs/*/
