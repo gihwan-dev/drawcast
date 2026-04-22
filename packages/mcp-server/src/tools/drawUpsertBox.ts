@@ -59,7 +59,7 @@ export const drawUpsertBoxInputSchema = z.object({
 export type DrawUpsertBoxInput = z.infer<typeof drawUpsertBoxInputSchema>;
 
 const DESCRIPTION =
-  'Add or update a labeled box in the current scene. Use this for nodes in a diagram (process, decision, data, etc.). Same id re-applies as an update (upsert). Size auto-fits to text unless fit="fixed" with explicit size. Omit `at` to let the layout engine pick a position — only pass explicit coordinates when the user specifically asked to pin or place the box. Pass `returnPreview: true` to receive a PNG snapshot of the scene after the upsert for visual self-review.';
+  'Add or update a labeled box in the current scene. Use this for nodes in a diagram (process, decision, data, etc.). Same id re-applies as an update (upsert). Size auto-fits to text unless fit="fixed" with explicit size. Omit `at` to let the layout engine pick a position — only pass explicit coordinates when the user specifically asked to pin or place the box. `at` is the CENTER of the box (not the top-left); when placing boxes inside a `draw_upsert_frame` whose `at` is the frame top-left, remember to offset by half the box size so children stay inside the frame. Pass `returnPreview: true` to receive a PNG snapshot of the scene after the upsert for visual self-review.';
 
 export const drawUpsertBox = defineTool({
   name: 'draw_upsert_box',
@@ -78,7 +78,7 @@ export const drawUpsertBox = defineTool({
       at: {
         ...POINT_JSON_SCHEMA,
         description:
-          'Scene coordinate [x, y]. Optional — omit to let the layout engine place the box. Provide only when the user explicitly asked to pin a position.',
+          'Scene coordinate [x, y] of the box CENTER (not top-left). The rendered rect spans [x - width/2, y - height/2] to [x + width/2, y + height/2]. Optional — omit to let the layout engine place the box. Provide only when the user explicitly asked to pin a position. When placing inside a frame (whose `at` is top-left), add half the box size to the desired inner offset so the shape stays inside the frame bounds.',
       },
       style: STYLE_REF_JSON_SCHEMA,
       fit: {

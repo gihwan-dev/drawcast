@@ -175,6 +175,24 @@ describe('draw_upsert_box', () => {
     expect(result.content[0]).toMatchObject({ type: 'text' });
   });
 
+  it('documents that `at` is the CENTER of the box in both the tool description and the schema', () => {
+    // Regression: `labelBox.at` is a CENTER point (see
+    // @drawcast/core src/emit/labelBox.ts), but `draw_upsert_frame.at`
+    // is a top-left. Without clarifying this in the tool schema, LLM
+    // authors put box children outside their parent frame bounds (they
+    // assume `at` == top-left, matching frames). The MCP schema is the
+    // single source of truth the LLM sees — these assertions keep the
+    // CENTER/top-left distinction from silently regressing.
+    expect(drawUpsertBox.description).toMatch(/CENTER of the box/);
+    const atSchema = (
+      drawUpsertBox.jsonSchema as {
+        properties: { at: { description: string } };
+      }
+    ).properties.at;
+    expect(atSchema.description).toMatch(/CENTER/);
+    expect(atSchema.description).toMatch(/x - width\/2/);
+  });
+
   it('converts a literal \\n inside the text into a real newline', async () => {
     // Regression: some MCP clients double-encode newlines as the two
     // characters `\` + `n`, which would otherwise land in Excalidraw as
