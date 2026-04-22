@@ -7,7 +7,11 @@ import type { Connector, PrimitiveId, Scene } from '../primitives.js';
 import type { CompileContext } from './context.js';
 import { emitLabelBox } from '../emit/labelBox.js';
 import { emitSticky } from '../emit/sticky.js';
-import { emitConnector, type ConnectorLane } from '../emit/connector.js';
+import {
+  clearEdgeLabelsFromOtherArrows,
+  emitConnector,
+  type ConnectorLane,
+} from '../emit/connector.js';
 import { applyGroup } from '../emit/group.js';
 import { emitFrame, applyFrameChildren } from '../emit/frame.js';
 import { emitLine } from '../emit/line.js';
@@ -74,6 +78,13 @@ export function passRelational(scene: Scene, ctx: CompileContext): void {
   for (const p of connectors) {
     emitConnector(p, ctx, lanes.get(p.id));
   }
+
+  // After every arrow + bound label is emitted, sweep for labels that
+  // landed on a non-own arrow's polyline and shift the owning arrow's
+  // middle segment perpendicular so the anchored label clears. Runs here
+  // (not per-connector) so the sweep sees the full final arrow set rather
+  // than only the prefix emitted before this connector.
+  clearEdgeLabelsFromOtherArrows(ctx);
 }
 
 function assignConnectorLanes(

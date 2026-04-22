@@ -978,3 +978,170 @@ describe('emitConnector — straight-line obstacle detour (arch-cdn-03)', () => 
     expect(latLabel!.width).toBeLessThan(66);
   });
 });
+
+describe('passRelational — clearEdgeLabelsFromOtherArrows post-pass', () => {
+  // flow-ci-04 regression: multiple "실패" edges share a narrow vertical
+  // corridor and a main-flow vertical arrow stems through where their bound
+  // labels anchor (the middle-segment midpoint of each H-V-H feedback
+  // polyline). Excalidraw recomputes bound-text positions from the arrow
+  // polyline at render time, so the fix has to move the *arrow* — the
+  // post-pass shifts the 4-point arrow's middle segment perpendicular until
+  // the label bbox clears every non-own polyline.
+  //
+  // Geometry for this test:
+  //   A (100,100..180,140) — right-centre (180, 120)
+  //   B (400,260..480,300) — left-centre  (400, 280)
+  //   C (240, 20..320, 60) — bottom-centre (280,  60)
+  //   D (240,340..320,380) — top-centre   (280, 380)
+  //   E1 A→B H-V-H via X=280 with label "L"; label anchor = (280, 200)
+  //   E2 C→D vertical at X=280
+  // The vertical polyline of E2 passes straight through E1's bound-label
+  // bbox, so the post-pass must shift E1's middle segment in X.
+  it('shifts a 4-point H-V-H arrow whose bound label sits on another arrow', () => {
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 100],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      at: [400, 260],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'B',
+    };
+    const c: LabelBox = {
+      kind: 'labelBox',
+      id: 'c' as PrimitiveId,
+      shape: 'rectangle',
+      at: [240, 20],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'C',
+    };
+    const d: LabelBox = {
+      kind: 'labelBox',
+      id: 'd' as PrimitiveId,
+      shape: 'rectangle',
+      at: [240, 340],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'D',
+    };
+    const e1: Connector = {
+      kind: 'connector',
+      id: 'e1' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: 'b' as PrimitiveId,
+      label: 'L',
+      routing: 'elbow',
+      routedPath: [
+        [180, 120],
+        [280, 120],
+        [280, 280],
+        [400, 280],
+      ],
+    };
+    const e2: Connector = {
+      kind: 'connector',
+      id: 'e2' as PrimitiveId,
+      from: 'c' as PrimitiveId,
+      to: 'd' as PrimitiveId,
+      routing: 'elbow',
+      routedPath: [
+        [280, 60],
+        [280, 340],
+      ],
+    };
+
+    const result = compile(makeScene([a, b, c, d, e1, e2]));
+    const arrows = result.elements.filter(
+      (el): el is ExcalidrawArrowElement => el.type === 'arrow',
+    );
+    const e1Arrow = arrows.find(
+      (ar) => ar.boundElements?.some((be) => be.type === 'text'),
+    );
+    if (e1Arrow === undefined) throw new Error('expected labelled arrow');
+
+    expect(e1Arrow.points).toHaveLength(4);
+    const abs = e1Arrow.points.map(
+      (pt) => [e1Arrow.x + pt[0], e1Arrow.y + pt[1]] as [number, number],
+    );
+    // Endpoints still anchored to A's right edge and B's left edge.
+    expect(abs[0]).toEqual([180, 120]);
+    expect(abs[3]).toEqual([400, 280]);
+    // Middle segment was shifted OFF the crowded X=280 corridor — the
+    // smallest candidate shift (±30) already clears the E2 polyline, so the
+    // new vertical lives at X=310 (the rollback would leave it at 280).
+    expect(abs[1]![0]).not.toBe(280);
+    expect(abs[2]![0]).not.toBe(280);
+    expect(abs[1]![0]).toBe(abs[2]![0]);
+    expect(abs[1]![1]).toBe(120);
+    expect(abs[2]![1]).toBe(280);
+
+    // Excalidraw recomputes the bound-label position at render time from the
+    // arrow polyline's middle-segment midpoint, so what actually clears the
+    // E2 corridor is the SHIFTED middle-segment X — checked above. (The
+    // text element's stored x/y remain at the pre-shift emit position,
+    // because only the arrow has to move for the runtime anchor to shift.)
+    const newMidX = (abs[1]![0] + abs[2]![0]) / 2;
+    expect(Math.abs(newMidX - 280)).toBeGreaterThanOrEqual(30);
+  });
+
+  it('leaves a 4-point arrow alone when its label is not crossed by any other arrow', () => {
+    // Guard: the post-pass must only fire on confirmed overlaps. A solo
+    // H-V-H connector whose label bbox is clear of every sibling polyline
+    // should pass through untouched so that routine compiles do not acquire
+    // spurious perpendicular nudges.
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 100],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      at: [400, 260],
+      fit: 'fixed',
+      size: [80, 40],
+      text: 'B',
+    };
+    const e1: Connector = {
+      kind: 'connector',
+      id: 'e1' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: 'b' as PrimitiveId,
+      label: 'L',
+      routing: 'elbow',
+      routedPath: [
+        [180, 120],
+        [280, 120],
+        [280, 280],
+        [400, 280],
+      ],
+    };
+
+    const result = compile(makeScene([a, b, e1]));
+    const arrow = findArrow(result.elements);
+    const abs = arrow.points.map(
+      (pt) => [arrow.x + pt[0], arrow.y + pt[1]] as [number, number],
+    );
+    expect(abs).toEqual([
+      [180, 120],
+      [280, 120],
+      [280, 280],
+      [400, 280],
+    ]);
+  });
+});

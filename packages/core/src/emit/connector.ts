@@ -1038,3 +1038,168 @@ export function emitConnector(
     bbox: { x: start[0], y: start[1], w: width, h: height },
   });
 }
+
+/**
+ * Perpendicular offsets (in px) tried when shifting a crowded middle segment
+ * so the anchored label clears neighbouring edges. Ordered small-first so the
+ * visible polyline change is minimised.
+ */
+const MIDDLE_SEGMENT_SHIFTS = [30, -30, 50, -50, 80, -80] as const;
+
+/**
+ * Walk every emitted bound edge label and, when its bbox lands on a non-own
+ * arrow's polyline segment, shift the OWN arrow's middle segment
+ * perpendicular until the label clears. Targets 4-point orthogonal routes
+ * (H-V-H or V-H-V) produced by ELK for converging feedback fans — e.g. the
+ * `flow-ci-04` CI pipeline, where five "실패" edges share a narrow vertical
+ * corridor and the labels stack on top of adjacent vertical stems.
+ *
+ * Why a post-pass: bound-text positions are recomputed by Excalidraw at
+ * render time from the arrow's middle-segment midpoint (`getBoundTextElement
+ * Position`), so moving the text element itself has no effect — the fix has
+ * to move the *arrow*. The per-connector emit can only see previously
+ * emitted arrows, so the final global view lives here.
+ *
+ * Conservative by design: rolls back if no shift clears, refuses shifts that
+ * would push a leg through a non-endpoint LabelBox, and only touches
+ * polylines whose shape matches the known regression.
+ */
+export function clearEdgeLabelsFromOtherArrows(ctx: CompileContext): void {
+  const arrows: ExcalidrawArrowElement[] = [];
+  for (const e of ctx.elements) {
+    if (e.type === 'arrow') arrows.push(e as ExcalidrawArrowElement);
+  }
+  if (arrows.length < 2) return;
+
+  const textByArrow = new Map<string, ExcalidrawTextElement>();
+  for (const e of ctx.elements) {
+    if (e.type !== 'text') continue;
+    const t = e as ExcalidrawTextElement;
+    if (typeof t.containerId === 'string') {
+      textByArrow.set(t.containerId, t);
+    }
+  }
+
+  function absPts(arrow: ExcalidrawArrowElement): Point[] {
+    return arrow.points.map(
+      ([px, py]) => [arrow.x + px, arrow.y + py] as Point,
+    );
+  }
+
+  function labelBbox(
+    arrow: ExcalidrawArrowElement,
+    text: ExcalidrawTextElement,
+  ): ObstacleBBox {
+    const pts = absPts(arrow);
+    const [cx, cy] = computeLabelAnchor(pts);
+    return {
+      x: cx - text.width / 2,
+      y: cy - text.height / 2,
+      w: text.width,
+      h: text.height,
+    };
+  }
+
+  function anyOtherArrowCrossesBox(
+    ownId: string,
+    box: ObstacleBBox,
+  ): boolean {
+    for (const other of arrows) {
+      if (other.id === ownId) continue;
+      const opts = absPts(other);
+      for (let i = 0; i < opts.length - 1; i += 1) {
+        if (segmentCrossesBBoxInterior(opts[i]!, opts[i + 1]!, box)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function endpointPrimitiveIds(
+    arrow: ExcalidrawArrowElement,
+  ): Set<PrimitiveId> {
+    const excludeIds = new Set<PrimitiveId>();
+    const startElemId = arrow.startBinding?.elementId;
+    const endElemId = arrow.endBinding?.elementId;
+    for (const [primId, rec] of ctx.registry) {
+      if (rec.kind !== 'labelBox') continue;
+      if (
+        (startElemId !== undefined && rec.elementIds.includes(startElemId)) ||
+        (endElemId !== undefined && rec.elementIds.includes(endElemId))
+      ) {
+        excludeIds.add(primId);
+      }
+    }
+    return excludeIds;
+  }
+
+  for (const arrow of arrows) {
+    const text = textByArrow.get(arrow.id);
+    if (!text) continue;
+    if (arrow.points.length !== 4) continue;
+    const p0 = arrow.points[0]!;
+    const p1 = arrow.points[1]!;
+    const p2 = arrow.points[2]!;
+    const p3 = arrow.points[3]!;
+    const ax01 = segmentAxis(p0 as Point, p1 as Point);
+    const ax12 = segmentAxis(p1 as Point, p2 as Point);
+    const ax23 = segmentAxis(p2 as Point, p3 as Point);
+    if (ax01 === null || ax12 === null || ax23 === null) continue;
+    if (ax01 !== ax23 || ax12 === ax01) continue;
+
+    if (!anyOtherArrowCrossesBox(arrow.id, labelBbox(arrow, text))) continue;
+
+    const excludePrims = endpointPrimitiveIds(arrow);
+    const orig1: Point = [p1[0], p1[1]];
+    const orig2: Point = [p2[0], p2[1]];
+    let resolved = false;
+
+    for (const shift of MIDDLE_SEGMENT_SHIFTS) {
+      if (ax12 === 'v') {
+        arrow.points[1] = [orig1[0] + shift, orig1[1]] as typeof arrow.points[0];
+        arrow.points[2] = [orig2[0] + shift, orig2[1]] as typeof arrow.points[0];
+      } else {
+        arrow.points[1] = [orig1[0], orig1[1] + shift] as typeof arrow.points[0];
+        arrow.points[2] = [orig2[0], orig2[1] + shift] as typeof arrow.points[0];
+      }
+
+      const shiftedAbs = absPts(arrow);
+      const crossesNode =
+        !pathClearOfLabelBoxes(shiftedAbs, excludePrims, ctx);
+      if (crossesNode) continue;
+
+      if (!anyOtherArrowCrossesBox(arrow.id, labelBbox(arrow, text))) {
+        updateArrowExtents(arrow);
+        resolved = true;
+        break;
+      }
+    }
+
+    if (!resolved) {
+      arrow.points[1] = orig1 as typeof arrow.points[0];
+      arrow.points[2] = orig2 as typeof arrow.points[0];
+    }
+  }
+}
+
+/**
+ * Recompute `width` / `height` from the current local-point list. `x` / `y`
+ * stay fixed because `points[0]` remains `[0,0]` (P3); only the spanned bbox
+ * can change when an interior point is nudged perpendicular.
+ */
+function updateArrowExtents(arrow: ExcalidrawArrowElement): void {
+  if (arrow.points.length === 0) return;
+  let minX = arrow.points[0]![0];
+  let maxX = minX;
+  let minY = arrow.points[0]![1];
+  let maxY = minY;
+  for (const [px, py] of arrow.points) {
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
+  arrow.width = maxX - minX;
+  arrow.height = maxY - minY;
+}
