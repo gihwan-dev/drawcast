@@ -7,3 +7,4 @@
 {"run_id":"20260422-110137-erd1","question_id":"erd-blog-01","category":"erd","difficulty":"easy","status":"pass","ts":"2026-04-22T11:03:00Z"}
 {"run_id":"20260422-120000-net1","question_id":"net-home-01","category":"network","difficulty":"medium","status":"pass","ts":"2026-04-22T12:05:02Z"}
 {"run_id":"20260422-130000-flci","question_id":"flow-ci-04","category":"flowchart","difficulty":"hard","status":"pass","ts":"2026-04-22T13:10:00Z"}
+{"run_id":"20260422-140000-arcm2","question_id":"arch-micro-02","category":"architecture","difficulty":"medium","status":"pass","ts":"2026-04-22T14:05:00Z"}
