@@ -10,3 +10,4 @@
 {"run_id":"20260422-140000-arcm2","question_id":"arch-micro-02","category":"architecture","difficulty":"medium","status":"pass","ts":"2026-04-22T14:05:00Z"}
 {"run_id":"20260423-000000-saga3","question_id":"seq-saga-03","category":"sequence","difficulty":"hard","status":"gave-up","ts":"2026-04-22T15:27:00Z"}
 {"run_id":"20260423-010000-tcp2","question_id":"state-tcp-02","category":"state","difficulty":"medium","status":"pass","ts":"2026-04-22T16:05:00Z"}
+{"run_id":"20260423-020000-erdm2","question_id":"erd-ecom-02","category":"erd","difficulty":"medium","status":"pass","ts":"2026-04-23T02:05:00Z"}
