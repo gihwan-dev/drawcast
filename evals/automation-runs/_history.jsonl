@@ -18,3 +18,4 @@
 {"run_id":"20260423-070000-a3t1","question_id":"arch-3tier-01","category":"architecture","difficulty":"easy","status":"pass","ts":"2026-04-23T07:05:00Z"}
 {"run_id":"20260423-080000-wsseq","question_id":"seq-websocket-02","category":"sequence","difficulty":"easy","status":"pass","ts":"2026-04-23T08:05:00Z"}
 {"run_id":"20260423-090000-erdh3","question_id":"erd-hospital-03","category":"erd","difficulty":"hard","status":"pass","ts":"2026-04-23T09:05:00Z"}
+{"run_id":"20260423-100000-elv3","question_id":"state-elevator-03","category":"state","difficulty":"medium","status":"pass","ts":"2026-04-23T10:05:00Z"}
