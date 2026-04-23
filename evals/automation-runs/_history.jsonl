@@ -21,3 +21,4 @@
 {"run_id":"20260423-100000-elv3","question_id":"state-elevator-03","category":"state","difficulty":"medium","status":"pass","ts":"2026-04-23T10:05:00Z"}
 {"run_id":"20260423-110000-nhome","question_id":"net-home-01","category":"network","difficulty":"medium","status":"pass","ts":"2026-04-23T11:05:00Z"}
 {"run_id":"20260423-120000-mind1","question_id":"mind-react-01","category":"mind","difficulty":"medium","status":"pass","ts":"2026-04-23T12:05:00Z"}
+{"run_id":"20260423-130000-sord1","question_id":"state-order-01","category":"state","difficulty":"easy","status":"pass","ts":"2026-04-23T13:05:00Z"}
