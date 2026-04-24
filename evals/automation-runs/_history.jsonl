@@ -41,3 +41,4 @@
 {"run_id":"20260424-110000-sags1","question_id":"seq-saga-03","category":"sequence","difficulty":"hard","status":"fixed","ts":"2026-04-24T11:05:00Z"}
 {"run_id":"20260424-120000-flco1","question_id":"flow-concurrent-06","category":"flowchart","difficulty":"hard","status":"pass","ts":"2026-04-24T12:05:00Z"}
 {"run_id":"20260424-130000-erdh1","question_id":"erd-hospital-03","category":"erd","difficulty":"hard","status":"pass","ts":"2026-04-24T13:05:00Z"}
+{"run_id":"20260424-140000-arch3","question_id":"arch-3tier-01","category":"architecture","difficulty":"easy","status":"pass","ts":"2026-04-24T14:05:00Z"}
