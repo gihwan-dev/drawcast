@@ -46,3 +46,4 @@
 {"run_id":"20260424-160000-vpcr2","question_id":"net-vpc-02","category":"network","difficulty":"hard","status":"no-change","ts":"2026-04-24T16:05:00Z"}
 {"run_id":"20260424-210040-mind1","question_id":"mind-react-01","category":"mind","difficulty":"medium","status":"pass","ts":"2026-04-24T21:05:00Z"}
 {"run_id":"20260424-220000-org1","question_id":"org-startup-01","category":"org","difficulty":"easy","status":"pass","ts":"2026-04-24T22:05:00Z"}
+{"run_id":"20260424-230000-wsk1","question_id":"seq-websocket-02","category":"sequence","difficulty":"easy","status":"pass","ts":"2026-04-24T23:05:00Z"}
