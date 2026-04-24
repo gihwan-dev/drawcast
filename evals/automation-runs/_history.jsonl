@@ -44,3 +44,4 @@
 {"run_id":"20260424-140000-arch3","question_id":"arch-3tier-01","category":"architecture","difficulty":"easy","status":"pass","ts":"2026-04-24T14:05:00Z"}
 {"run_id":"20260424-150000-stord","question_id":"state-order-01","category":"state","difficulty":"easy","status":"pass","ts":"2026-04-24T15:05:00Z"}
 {"run_id":"20260424-160000-vpcr2","question_id":"net-vpc-02","category":"network","difficulty":"hard","status":"no-change","ts":"2026-04-24T16:05:00Z"}
+{"run_id":"20260424-210040-mind1","question_id":"mind-react-01","category":"mind","difficulty":"medium","status":"pass","ts":"2026-04-24T21:05:00Z"}
