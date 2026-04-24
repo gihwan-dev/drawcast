@@ -1,7 +1,9 @@
 import { execa, type ExecaError } from 'execa';
 import type {
   ClaudeTrace,
+  EvalQuestion,
   ExcalidrawScene,
+  QuestionCategory,
   TokenUsageTrace,
   ToolCallTrace,
 } from './types.js';
@@ -156,8 +158,47 @@ function outputToString(value: unknown): string | undefined {
   return undefined;
 }
 
-export function buildClaudePrompt(questionPrompt: string): string {
-  return `${questionPrompt}
+const CATEGORY_SHAPE_HINTS: Record<QuestionCategory, string> = {
+  flowchart: '플로우차트: 시작·판단·처리·종료 노드를 선 방향(보통 위→아래)으로 배치, 분기·루프는 화살표로 명시.',
+  architecture: '아키텍처 다이어그램: 레이어/컴포넌트를 박스와 그룹으로 묶고, 데이터 흐름은 방향 있는 엣지로.',
+  sequence: '시퀀스 다이어그램: 참여자(actor/service)를 상단 가로 축에 나열하고, 각 참여자 아래로 생명선을 세로로 내린 뒤 시간 순서대로 참여자 간 메시지를 가로 화살표로 그린다. 플로우차트 형태(위→아래 단일 흐름)로 그리지 말 것.',
+  erd: 'ERD: 엔티티를 사각형으로, 관계는 엣지 라벨로 카디널리티(1, N, 1..N 등) 명시.',
+  state: '상태 다이어그램: 상태 노드와 전이(이벤트/조건) 엣지, 시작/종료 상태 표기.',
+  mind: '마인드맵: 중앙 노드에서 방사형 가지, 깊이 2~3단계.',
+  org: '조직도: 최상위에서 하위로 트리 구조, 팀·역할 단위.',
+  network: '네트워크 다이어그램: 장비·영역을 묶고 물리/논리 링크를 엣지로.',
+};
+
+function buildCountHint(range: { min: number; max: number } | undefined, label: string): string | undefined {
+  if (!range) return undefined;
+  if (range.min === range.max) return `${label} 약 ${range.min}개`;
+  return `${label} ${range.min}~${range.max}개`;
+}
+
+export function buildClaudePrompt(question: EvalQuestion): string {
+  const shapeHint = CATEGORY_SHAPE_HINTS[question.category];
+  const countHints = [
+    buildCountHint(question.expected.node_count, '노드'),
+    buildCountHint(question.expected.edge_count, '엣지'),
+  ].filter((value): value is string => value !== undefined);
+  const branchHint = question.expected.must_have_branch ? '성공/실패(또는 조건) 분기 경로를 반드시 포함.' : undefined;
+  const loopHint = question.expected.must_have_loop ? '반복(루프) 경로를 반드시 포함.' : undefined;
+  const conceptHint =
+    question.expected.required_concepts.length > 0
+      ? `필수 개념: ${question.expected.required_concepts.join(', ')}.`
+      : undefined;
+
+  const constraintLines = [
+    shapeHint,
+    countHints.length > 0 ? `구조 범위: ${countHints.join(', ')}.` : undefined,
+    branchHint,
+    loopHint,
+    conceptHint,
+  ].filter((line): line is string => line !== undefined);
+
+  const constraintBlock = constraintLines.length > 0 ? `\n\n제약:\n- ${constraintLines.join('\n- ')}` : '';
+
+  return `${question.prompt}${constraintBlock}
 
 drawcast MCP 도구(mcp__drawcast__draw_upsert_box, mcp__drawcast__draw_upsert_edge 등)로 다이어그램을 완성한 뒤 응답을 종료해라. 완성된 씬은 평가 러너가 MCP에서 직접 수집하므로 draw_export를 따로 호출할 필요는 없다. 설명·요약·확인 메시지는 덧붙이지 말 것.
 
