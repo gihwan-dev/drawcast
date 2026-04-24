@@ -88,7 +88,7 @@ export async function runQuestionSample(options: {
     // --- Claude turn ---
     try {
       const claude = await runClaudeForQuestion({
-        prompt: buildClaudePrompt(options.question.prompt),
+        prompt: buildClaudePrompt(options.question),
         mcpConfigPath,
       });
       await writeJson(tracePath, claude.trace);
