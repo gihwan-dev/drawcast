@@ -75,3 +75,4 @@
 {"run_id":"20260426-020000-evd1","question_id":"arch-eventdriven-05","category":"architecture","difficulty":"hard","status":"pass","ts":"2026-04-26T02:05:00Z"}
 {"run_id":"20260426-030000-elev1","question_id":"state-elevator-03","category":"state","difficulty":"medium","status":"pass","ts":"2026-04-26T03:05:00Z"}
 {"run_id":"20260426-040000-erdh3","question_id":"erd-hospital-03","category":"erd","difficulty":"hard","status":"pass","ts":"2026-04-26T04:05:00Z"}
+{"run_id":"20260426-050000-vpc1","question_id":"net-vpc-02","category":"network","difficulty":"hard","status":"pass","ts":"2026-04-26T05:05:00Z"}
