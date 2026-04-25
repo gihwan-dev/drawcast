@@ -66,3 +66,4 @@
 {"run_id":"20260425-160000-erdhos1","question_id":"erd-hospital-03","category":"erd","difficulty":"hard","status":"pass","ts":"2026-04-25T16:05:00Z"}
 {"run_id":"20260425-170000-flowci4","question_id":"flow-ci-04","category":"flowchart","difficulty":"hard","status":"pass","ts":"2026-04-25T17:05:00Z"}
 {"run_id":"20260425-180000-arch3t1","question_id":"arch-3tier-01","category":"architecture","difficulty":"easy","status":"pass","ts":"2026-04-25T18:05:00Z"}
+{"run_id":"20260425-190000-stcp1","question_id":"state-tcp-02","category":"state","difficulty":"medium","status":"pass","ts":"2026-04-25T19:05:00Z"}
