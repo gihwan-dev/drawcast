@@ -68,3 +68,4 @@
 {"run_id":"20260425-180000-arch3t1","question_id":"arch-3tier-01","category":"architecture","difficulty":"easy","status":"pass","ts":"2026-04-25T18:05:00Z"}
 {"run_id":"20260425-190000-stcp1","question_id":"state-tcp-02","category":"state","difficulty":"medium","status":"pass","ts":"2026-04-25T19:05:00Z"}
 {"run_id":"20260425-200000-nethom1","question_id":"net-home-01","category":"network","difficulty":"medium","status":"pass","ts":"2026-04-25T20:05:00Z"}
+{"run_id":"20260425-210000-mind4","question_id":"mind-react-01","category":"mind","difficulty":"medium","status":"pass","ts":"2026-04-25T21:05:00Z"}
