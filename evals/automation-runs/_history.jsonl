@@ -58,3 +58,4 @@
 {"run_id":"20260425-080000-fretr","question_id":"flow-retry-05","category":"flowchart","difficulty":"easy","status":"pass","ts":"2026-04-25T08:05:00Z"}
 {"run_id":"20260425-090000-seqllm","question_id":"seq-llm-05","category":"sequence","difficulty":"hard","status":"fixed","ts":"2026-04-25T09:08:00Z"}
 {"run_id":"20260425-100000-erdec","question_id":"erd-ecom-02","category":"erd","difficulty":"medium","status":"pass","ts":"2026-04-25T10:05:00Z"}
+{"run_id":"20260425-110000-stord2","question_id":"state-order-01","category":"state","difficulty":"easy","status":"pass","ts":"2026-04-25T11:05:00Z"}
