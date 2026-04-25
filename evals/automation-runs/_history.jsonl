@@ -61,3 +61,4 @@
 {"run_id":"20260425-110000-stord2","question_id":"state-order-01","category":"state","difficulty":"easy","status":"pass","ts":"2026-04-25T11:05:00Z"}
 {"run_id":"20260425-120000-vpcr3","question_id":"net-vpc-02","category":"network","difficulty":"hard","status":"pass","ts":"2026-04-25T12:05:00Z"}
 {"run_id":"20260425-130000-mndre1","question_id":"mind-react-01","category":"mind","difficulty":"medium","status":"pass","ts":"2026-04-25T13:05:00Z"}
+{"run_id":"20260425-140000-org2","question_id":"org-startup-01","category":"org","difficulty":"easy","status":"pass","ts":"2026-04-25T14:05:00Z"}
