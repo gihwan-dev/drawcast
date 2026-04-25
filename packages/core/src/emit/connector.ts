@@ -252,6 +252,17 @@ interface ObstacleBBox {
   h: number;
 }
 
+// LabelBoxes thinner than this on either axis are visual lines (e.g. sequence
+// diagram lifelines drawn at width=2) rather than enclosed regions. Sequence
+// messages are MEANT to cross lifelines, so treating them as obstacles forces
+// every horizontal arrow to detour up/down to clear the columns and the bound
+// labels then pile up on the same coordinate (seq-llm-05 regression).
+const LINE_SHAPED_OBSTACLE_THICKNESS = 4;
+
+function isLineShapedBBox(b: ObstacleBBox): boolean {
+  return b.w <= LINE_SHAPED_OBSTACLE_THICKNESS || b.h <= LINE_SHAPED_OBSTACLE_THICKNESS;
+}
+
 /**
  * Liang–Barsky strict-interior test: does the segment `start → end` cross
  * the interior of `b`, or only graze an edge? Returns true iff there is a
@@ -314,6 +325,7 @@ function findBlockingLabelBox(
   for (const [id, record] of ctx.registry) {
     if (excludeIds.has(id)) continue;
     if (record.kind !== 'labelBox') continue;
+    if (isLineShapedBBox(record.bbox)) continue;
     if (segmentCrossesBBoxInterior(start, end, record.bbox)) return record.bbox;
   }
   return null;
