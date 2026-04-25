@@ -821,6 +821,87 @@ describe('emitConnector — straight-line obstacle detour (arch-cdn-03)', () => 
     }
   });
 
+  it('line-shaped LabelBoxes (sequence-diagram lifelines) do not trigger detours', () => {
+    // Regression: seq-llm-05 emitted vertical "lifeline" rectangles at
+    // width=2 between participant boxes, then horizontal sequence messages
+    // crossing those lifelines. The detour treated each lifeline as an
+    // obstacle, sending every horizontal arrow up to the same y-coordinate
+    // and stacking the bound labels on top of one another (4 label
+    // overlaps in a single scene). Lifelines are visual lines, not enclosed
+    // regions; sequence messages are MEANT to cross them.
+    const userBox: LabelBox = {
+      kind: 'labelBox',
+      id: 'user' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 40],
+      fit: 'fixed',
+      size: [150, 60],
+      text: 'User',
+    };
+    const apiBox: LabelBox = {
+      kind: 'labelBox',
+      id: 'api' as PrimitiveId,
+      shape: 'rectangle',
+      at: [330, 40],
+      fit: 'fixed',
+      size: [150, 60],
+      text: 'API',
+    };
+    const dbBox: LabelBox = {
+      kind: 'labelBox',
+      id: 'db' as PrimitiveId,
+      shape: 'rectangle',
+      at: [580, 40],
+      fit: 'fixed',
+      size: [150, 60],
+      text: 'DB',
+    };
+    // Lifelines: tall thin rectangles (width 2) under each participant.
+    const userLine: LabelBox = {
+      kind: 'labelBox',
+      id: 'l_user' as PrimitiveId,
+      shape: 'rectangle',
+      at: [100, 450],
+      fit: 'fixed',
+      size: [2, 720],
+      text: '',
+    };
+    const apiLine: LabelBox = {
+      kind: 'labelBox',
+      id: 'l_api' as PrimitiveId,
+      shape: 'rectangle',
+      at: [330, 450],
+      fit: 'fixed',
+      size: [2, 720],
+      text: '',
+    };
+    const dbLine: LabelBox = {
+      kind: 'labelBox',
+      id: 'l_db' as PrimitiveId,
+      shape: 'rectangle',
+      at: [580, 450],
+      fit: 'fixed',
+      size: [2, 720],
+      text: '',
+    };
+    // Horizontal sequence message User → API at y=160. The straight line
+    // crosses the User lifeline endpoint and grazes the API lifeline.
+    const msg: Connector = {
+      kind: 'connector',
+      id: 'm1' as PrimitiveId,
+      from: [100, 160],
+      to: [330, 160],
+      routing: 'straight',
+      label: 'request',
+    };
+    const result = compile(
+      makeScene([userBox, apiBox, dbBox, userLine, apiLine, dbLine, msg]),
+    );
+    const arrow = findArrow(result.elements);
+    // Must remain a 2-point straight line — no detour around the lifelines.
+    expect(arrow.points.length).toBe(2);
+  });
+
   it('endpoint-adjacent LabelBoxes (targets of other edges) do not trigger a false detour', () => {
     // "cache" edge Web → Redis must stay straight even though Redis's
     // bbox touches the arrow's end point. `findBlockingLabelBox` excludes
