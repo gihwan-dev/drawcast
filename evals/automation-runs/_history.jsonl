@@ -80,3 +80,4 @@
 {"run_id":"20260426-070000-org1","question_id":"org-startup-01","category":"org","difficulty":"easy","status":"pass","ts":"2026-04-26T07:05:00Z"}
 {"run_id":"20260426-080000-erdblog1","question_id":"erd-blog-01","category":"erd","difficulty":"easy","status":"pass","ts":"2026-04-26T08:05:00Z"}
 {"run_id":"20260426-090000-court1","question_id":"flow-court-07","category":"flowchart","difficulty":"medium","status":"pass","ts":"2026-04-26T09:05:00Z"}
+{"run_id":"20260426-100000-oauth1","question_id":"seq-oauth-01","category":"sequence","difficulty":"medium","status":"fixed","ts":"2026-04-26T10:15:00Z"}

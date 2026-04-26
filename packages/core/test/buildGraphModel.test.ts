@@ -255,4 +255,72 @@ describe('buildGraphModel — labelBox size measurement', () => {
     expect(graph).not.toBeNull();
     expect(graph!.children).toHaveLength(2);
   });
+
+  // Regression guard for the seq-oauth-01 follow-up: when a scene has
+  // multiple LabelBoxes pinned with explicit `at` and *no* id-bound
+  // connectors among them — only raw-Point arrows for lifelines and
+  // messages — ELK's `layered` algorithm rearranges the nodes ignoring
+  // the `elk.position` hint because it has no edge structure to layer
+  // around. Trust the LLM's positional intent and short-circuit so the
+  // sync compile path keeps the declared `at`. Hand-laid sequence
+  // diagrams (actor row + lifelines + messages-as-points) end up here.
+  it('returns null when pinned LabelBoxes have no id-bound edges between them', () => {
+    const user: LabelBox = {
+      kind: 'labelBox',
+      id: 'user' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [140, 55],
+      at: [80, 50],
+      text: '사용자',
+    };
+    const auth: LabelBox = {
+      kind: 'labelBox',
+      id: 'auth' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [210, 55],
+      at: [570, 50],
+      text: 'Authorization Server',
+    };
+    const message = {
+      kind: 'connector' as const,
+      id: 'M1' as PrimitiveId,
+      from: [80, 200] as const,
+      to: [570, 200] as const,
+      label: '인증요청',
+    };
+    const graph = buildGraphModel(makeScene([user, auth, message]));
+    expect(graph).toBeNull();
+  });
+
+  it('keeps the graph live when at least one connector binds two LabelBoxes by id', () => {
+    const a: LabelBox = {
+      kind: 'labelBox',
+      id: 'a' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [140, 60],
+      at: [100, 100],
+      text: 'A',
+    };
+    const b: LabelBox = {
+      kind: 'labelBox',
+      id: 'b' as PrimitiveId,
+      shape: 'rectangle',
+      fit: 'fixed',
+      size: [140, 60],
+      at: [400, 100],
+      text: 'B',
+    };
+    const link = {
+      kind: 'connector' as const,
+      id: 'a_b' as PrimitiveId,
+      from: 'a' as PrimitiveId,
+      to: 'b' as PrimitiveId,
+    };
+    const graph = buildGraphModel(makeScene([a, b, link]));
+    expect(graph).not.toBeNull();
+    expect(graph!.edges).toHaveLength(1);
+  });
 });
