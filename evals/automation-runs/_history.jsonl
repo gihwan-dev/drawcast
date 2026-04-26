@@ -86,3 +86,4 @@
 {"run_id":"20260426-130000-nethom2","question_id":"net-home-01","category":"network","difficulty":"medium","status":"no-change","ts":"2026-04-26T13:10:00Z"}
 {"run_id":"20260426-140000-mindrct2","question_id":"mind-react-01","category":"mind","difficulty":"medium","status":"pass","ts":"2026-04-26T14:05:00Z"}
 {"run_id":"20260426-150000-orgst3","question_id":"org-startup-01","category":"org","difficulty":"easy","status":"pass","ts":"2026-04-26T15:05:00Z"}
+{"run_id":"20260426-160000-flowcc1","question_id":"flow-concurrent-06","category":"flowchart","difficulty":"hard","status":"pass","ts":"2026-04-26T16:05:00Z"}
