@@ -91,3 +91,4 @@
 {"run_id":"20260426-200000-arch3t1","question_id":"arch-3tier-01","category":"architecture","difficulty":"easy","status":"pass","ts":"2026-04-26T20:05:00Z"}
 {"run_id":"20260426-210000-seqws1","question_id":"seq-websocket-02","category":"sequence","difficulty":"easy","status":"pass","ts":"2026-04-26T21:05:00Z"}
 {"run_id":"20260426-220000-sttcp1","question_id":"state-tcp-02","category":"state","difficulty":"medium","status":"pass","ts":"2026-04-26T22:05:00Z"}
+{"run_id":"20260426-230000-vpc2","question_id":"net-vpc-02","category":"network","difficulty":"hard","status":"pass","ts":"2026-04-26T23:05:00Z"}
