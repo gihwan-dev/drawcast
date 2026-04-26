@@ -98,3 +98,4 @@
 {"run_id":"20260427-030000-archev1","question_id":"arch-eventdriven-05","category":"architecture","difficulty":"hard","status":"pass","ts":"2026-04-27T03:05:00Z"}
 {"run_id":"20260427-040000-seqllm1","question_id":"seq-llm-05","category":"sequence","difficulty":"hard","status":"pass","ts":"2026-04-27T04:05:00Z"}
 {"run_id":"20260427-050000-erdhsp1","question_id":"erd-hospital-03","category":"erd","difficulty":"hard","status":"pass","ts":"2026-04-27T05:05:00Z"}
+{"run_id":"20260427-060000-stord1","question_id":"state-order-01","category":"state","difficulty":"easy","status":"pass","ts":"2026-04-27T06:05:00Z"}
