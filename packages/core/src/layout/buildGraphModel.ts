@@ -93,6 +93,25 @@ export function buildGraphModel(
     }
   }
 
+  // No id-bound edges between LabelBoxes means ELK has no structural
+  // signal to re-layer the graph — and `layered` will still rearrange
+  // the nodes ignoring `elk.position` hints. The seq-oauth-01 eval
+  // produced this shape by drawing OAuth participants as LabelBoxes
+  // and connecting them with raw-Point arrows + raw-Point lifelines:
+  // ELK saw 4 nodes with 0 edges, packed them into one column, and
+  // the rendered actor row no longer matched the hand-laid lifelines.
+  // When at least one node carries a positional hint, fall back to
+  // the sync compile path so the declared `at` survives. Pure auto-
+  // layout scenes (no `at`, no edges) still go through ELK so two
+  // disconnected boxes get a deterministic side-by-side placement.
+  if (
+    nodes.length >= 2 &&
+    edges.length === 0 &&
+    nodes.some((n) => n.fixedPosition !== undefined)
+  ) {
+    return null;
+  }
+
   return {
     id: options.id ?? 'scene',
     diagramType: 'flowchart',
