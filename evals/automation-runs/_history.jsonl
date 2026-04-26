@@ -93,3 +93,4 @@
 {"run_id":"20260426-220000-sttcp1","question_id":"state-tcp-02","category":"state","difficulty":"medium","status":"pass","ts":"2026-04-26T22:05:00Z"}
 {"run_id":"20260426-230000-vpc2","question_id":"net-vpc-02","category":"network","difficulty":"hard","status":"pass","ts":"2026-04-26T23:05:00Z"}
 {"run_id":"20260427-000000-fretry1","question_id":"flow-retry-05","category":"flowchart","difficulty":"easy","status":"pass","ts":"2026-04-27T00:05:00Z"}
+{"run_id":"20260427-010000-mind1","question_id":"mind-react-01","category":"mind","difficulty":"medium","status":"pass","ts":"2026-04-27T01:05:00Z"}
