@@ -88,3 +88,4 @@
 {"run_id":"20260426-150000-orgst3","question_id":"org-startup-01","category":"org","difficulty":"easy","status":"pass","ts":"2026-04-26T15:05:00Z"}
 {"run_id":"20260426-160000-flowcc1","question_id":"flow-concurrent-06","category":"flowchart","difficulty":"hard","status":"pass","ts":"2026-04-26T16:05:00Z"}
 {"run_id":"20260426-170000-erdec1","question_id":"erd-ecom-02","category":"erd","difficulty":"medium","status":"pass","ts":"2026-04-26T17:05:00Z"}
+{"run_id":"20260426-200000-arch3t1","question_id":"arch-3tier-01","category":"architecture","difficulty":"easy","status":"pass","ts":"2026-04-26T20:05:00Z"}
